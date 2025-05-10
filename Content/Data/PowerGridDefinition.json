@@ -1,0 +1,1922 @@
+{
+	"Markers":
+	{
+		"XC": 200,
+		"XCS": 585,
+		"XCS2": 650,
+		"XCE": 64,
+		"YE": 284,
+		"Y1": 178,
+		"Y2": 282,
+		"Y3": 358,
+		"Y4": 530,
+		"Y5": 612,
+		"Y6": 689,
+		"Y7": 766,
+		"Y8": 844,
+		"YCS": 732,
+		"ERDY": 80
+	},
+	"Junctions": [
+		{
+			"Name": "SONAR",
+			"Type": "SS_Sonar",
+			"Position":
+			{
+				"X": 191,
+				"Y": 4,
+				"mX": "XC",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 64,
+				"H": 64
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "LBP",
+			"Type": "SS_BowPlanes",
+			"Position":
+			{
+				"X": 84,
+				"Y": 42,
+				"mX": "XC",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 80,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ACTUATOR ACTIVATE",
+				"ANGLE SET 0.00",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "RBP",
+			"Type": "SS_BowPlanes",
+			"Position":
+			{
+				"X": 285,
+				"Y": 42,
+				"mX": "XC",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 80,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ACTUATOR ACTIVATE",
+				"ANGLE SET 0.00",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "FMBT",
+			"Type": "SS_FMBTVent",
+			"Position":
+			{
+				"X": 44,
+				"Y": 92,
+				"mX": "XC",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 80,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"BLOW SET false",
+				"OPEN SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "FJ",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 175,
+				"Y": 110,
+				"mX": "XC",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 100,
+				"H": 40
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE",
+				"POWERPORT_4 ENABLE",
+				"POWERPORT_5 ENABLE",
+				"POWERPORT_6 ENABLE"
+			]
+		},
+		{
+			"Name": "TORPEDOROOM",
+			"Type": "SS_TorpedoTube",
+			"Position":
+			{
+				"X": 150,
+				"Y": -2,
+				"mX": "XC",
+				"mY": "Y1"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERSELECT SET 1",
+				"RAM_VALVE SET OFF"
+			]
+		},
+		{
+			"Name": "FTBT",
+			"Type": "SS_FTBTPump",
+			"Position":
+			{
+				"X": 150,
+				"Y": 208,
+				"mX": "XC",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERSELECT SET 1",
+				"PUMPRATE SET 0.00"
+			]
+		},
+		{
+			"Name": "L1",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 85,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y1"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 51
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE"
+			]
+		},
+		{
+			"Name": "R1",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 345,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y1"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 51
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE"
+			]
+		},
+		{
+			"Name": "BATTERY1",
+			"Type": "SS_Battery1",
+			"Position":
+			{
+				"X": 150,
+				"Y": -4,
+				"mX": "XC",
+				"mY": "Y2"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"CHARGE DISABLE",
+				"POWERSELECT SET -1",
+				"POWERPORT_0 DISABLE",
+				"POWERPORT_1 DISABLE",
+				"POWERPORT_2 DISABLE",
+				"POWERPORT_3 DISABLE"
+			]
+		},
+		{
+			"Name": "L2",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 85,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y2"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "R2",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 345,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y2"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "CONTROLROOM",
+			"Type": "SS_ControlRoom",
+			"Position":
+			{
+				"X": 150,
+				"Y": -2,
+				"mX": "XC",
+				"mY": "Y3"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ALERT SET ",
+				"POWERSELECT SET 2"
+			]
+		},
+		{
+			"Name": "AIRLOCK",
+			"Type": "SS_Airlock",
+			"Position":
+			{
+				"X": 150,
+				"Y": 30,
+				"mX": "XC",
+				"mY": "Y3"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERSELECT SET 1"
+			]
+		},
+		{
+			"Name": "CROSSTBT",
+			"Type": "SS_CrossTBTPump",
+			"Position":
+			{
+				"X": 150,
+				"Y": 62,
+				"mX": "XC",
+				"mY": "Y3"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERSELECT SET 1",
+				"PUMPRATE SET 0.00"
+			]
+		},
+		{
+			"Name": "L3",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 85,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y3"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 82
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE",
+				"POWERPORT_4 ENABLE",
+				"POWERPORT_5 ENABLE"
+			]
+		},
+		{
+			"Name": "R3",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 345,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y3"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 116
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE",
+				"POWERPORT_4 ENABLE",
+				"POWERPORT_5 ENABLE"
+			]
+		},
+		{
+			"Name": "ER",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 30,
+				"Y": -52,
+				"mX": "XC",
+				"mY": "Y3"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 220
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE",
+				"POWERPORT_4 ENABLE",
+				"POWERPORT_5 ENABLE",
+				"POWERPORT_6 ENABLE",
+				"POWERPORT_7 ENABLE"
+			]
+		},
+		{
+			"Name": "CO2SCRUBBER",
+			"Type": "SS_CO2Scrubber",
+			"Position":
+			{
+				"X": 0,
+				"Y": 20,
+				"mX": "XCE",
+				"mY": "YE"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "DEGAUSSER",
+			"Type": "SS_Degaussing",
+			"Position":
+			{
+				"X": 0,
+				"Y": 60,
+				"mX": "XCE",
+				"mY": "YE"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "AIRCOMPRESSOR",
+			"Type": "SS_AirCompressor",
+			"Position":
+			{
+				"X": -30,
+				"Y": 100,
+				"mX": "XCE",
+				"mY": "YE"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "DEHUMIDIFIER",
+			"Type": "SS_Dehumidifier",
+			"Position":
+			{
+				"X": 0,
+				"Y": 140,
+				"mX": "XCE",
+				"mY": "YE"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "O2GENERATOR",
+			"Type": "SS_O2Generator",
+			"Position":
+			{
+				"X": 0,
+				"Y": 180,
+				"mX": "XCE",
+				"mY": "YE"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "ELECTROLYZER",
+			"Type": "SS_Electrolysis",
+			"Position":
+			{
+				"X": 0,
+				"Y": 220,
+				"mX": "XCE",
+				"mY": "YE"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERSELECT SET 0",
+				"ON SET true",
+				"PRODUCTION SET 0.05"
+			]
+		},
+		{
+			"Name": "FUELCELL",
+			"Type": "SS_AIP",
+			"Position":
+			{
+				"X": 150,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y4"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET true",
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 DISABLE",
+				"POWERPORT_2 DISABLE"
+			]
+		},
+		{
+			"Name": "L4",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 85,
+				"Y": 4,
+				"mX": "XC",
+				"mY": "Y4"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "R4",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 345,
+				"Y": 4,
+				"mX": "XC",
+				"mY": "Y4"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "MAINMOTOR",
+			"Type": "SS_MainMotor",
+			"Position":
+			{
+				"X": 150,
+				"Y": -4,
+				"mX": "XC",
+				"mY": "Y5"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"THROTTLE SET 0.00",
+				"SILENT SET false",
+				"POWERSELECT SET 1"
+			]
+		},
+		{
+			"Name": "L5",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 85,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y5"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "R5",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 345,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y5"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "BATTERY2",
+			"Type": "SS_Battery2",
+			"Position":
+			{
+				"X": 150,
+				"Y": -4,
+				"mX": "XC",
+				"mY": "Y6"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"CHARGE DISABLE",
+				"POWERSELECT SET -1",
+				"POWERPORT_0 DISABLE",
+				"POWERPORT_1 DISABLE",
+				"POWERPORT_2 DISABLE"
+			]
+		},
+		{
+			"Name": "L6",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 85,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y6"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "R6",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 345,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y6"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "ROV",
+			"Type": "SS_ROVCharging",
+			"Position":
+			{
+				"X": 150,
+				"Y": 30,
+				"mX": "XC",
+				"mY": "Y7"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 1"
+			]
+		},
+		{
+			"Name": "L7",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 85,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y7"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 52
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "R7",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 345,
+				"Y": 0,
+				"mX": "XC",
+				"mY": "Y7"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 52
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
+			]
+		},
+		{
+			"Name": "RJ",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 175,
+				"Y": 4,
+				"mX": "XC",
+				"mY": "Y8"
+			},
+			"Size":
+			{
+				"W": 100,
+				"H": 40
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE",
+				"POWERPORT_4 ENABLE",
+				"POWERPORT_5 ENABLE"
+			]
+		},
+		{
+			"Name": "RMBT",
+			"Type": "SS_RMBTVent",
+			"Position":
+			{
+				"X": 44,
+				"Y": 27,
+				"mX": "XC",
+				"mY": "Y8"
+			},
+			"Size":
+			{
+				"W": 80,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"BLOW SET false",
+				"OPEN SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "RUDDER",
+			"Type": "SS_Rudder",
+			"Position":
+			{
+				"X": 84,
+				"Y": 77,
+				"mX": "XC",
+				"mY": "Y8"
+			},
+			"Size":
+			{
+				"W": 80,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ACTUATOR ACTIVATE",
+				"ANGLE SET 0.00",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "ELEVATOR",
+			"Type": "SS_Elevator",
+			"Position":
+			{
+				"X": 285,
+				"Y": 77,
+				"mX": "XC",
+				"mY": "Y8"
+			},
+			"Size":
+			{
+				"W": 80,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ACTUATOR ACTIVATE",
+				"ANGLE SET 0.00",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "S1",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 0,
+				"Y": 157,
+				"mX": "XCS",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 140
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE",
+				"POWERPORT_4 ENABLE",
+				"POWERPORT_5 ENABLE"
+			]
+		},
+		{
+			"Name": "GPS",
+			"Type": "SS_GPS",
+			"Position":
+			{
+				"X": 0,
+				"Y": 155,
+				"mX": "XCS2",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EXTEND SET false",
+				"ON SET true",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "CAMERA",
+			"Type": "SS_Camera",
+			"Position":
+			{
+				"X": 0,
+				"Y": 195,
+				"mX": "XCS2",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EXTEND SET false",
+				"ON SET true",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "ANTENNA",
+			"Type": "SS_Antenna",
+			"Position":
+			{
+				"X": 0,
+				"Y": 235,
+				"mX": "XCS2",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EXTEND SET false",
+				"ON SET true",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "RADAR",
+			"Type": "SS_Radar",
+			"Position":
+			{
+				"X": 0,
+				"Y": 275,
+				"mX": "XCS2",
+				"mY": ""
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EXTEND SET false",
+				"ON SET true",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "HATCH",
+			"Type": "SS_Hatch",
+			"Position":
+			{
+				"X": 0,
+				"Y": 31,
+				"mX": "XCS2",
+				"mY": "Y3"
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"OPEN SET false",
+				"POWERSELECT SET -1"
+			]
+		},
+		{
+			"Name": "S2",
+			"Type": "PWRJ_MultiConnJunction",
+			"Position":
+			{
+				"X": 0,
+				"Y": 1,
+				"mX": "XCS",
+				"mY": "YCS"
+			},
+			"Size":
+			{
+				"W": 20,
+				"H": 100
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERPORT_0 ENABLE",
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE",
+				"POWERPORT_4 ENABLE"
+			]
+		},
+		{
+			"Name": "COUNTERMEASURES",
+			"Type": "SS_Countermeasures",
+			"Position":
+			{
+				"X": 0,
+				"Y": -1,
+				"mX": "XCS2",
+				"mY": "YCS"
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERSELECT SET 0",
+				"JAMMING SET false",
+				"DEGAUSS SET true",
+				"MASK SET OFF"
+			]
+		},
+		{
+			"Name": "SOLARPANELS",
+			"Type": "SS_SolarPanels",
+			"Position":
+			{
+				"X": 0,
+				"Y": 39,
+				"mX": "XCS2",
+				"mY": "YCS"
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EXTEND SET false",
+				"ON SET true",
+				"POWERSELECT SET -1"
+			]
+		},
+		{
+			"Name": "TOWEDSONAR",
+			"Type": "SS_TowedSonarArray",
+			"Position":
+			{
+				"X": 0,
+				"Y": 79,
+				"mX": "XCS2",
+				"mY": "YCS"
+			},
+			"Size":
+			{
+				"W": 140,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EXTEND SET false",
+				"ON SET true",
+				"POWERSELECT SET 0"
+			]
+		}
+	],
+	"Segments": [
+		{
+			"Name": "sonar_feed",
+			"Status": "NORMAL",
+			"JunctionA": "SONAR",
+			"PortA": 0,
+			"JunctionB": "FJ",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 34,
+			"SideB": 0,
+			"OffsetB": 50
+		},
+		{
+			"Name": "rbp_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RBP",
+			"PortA": 0,
+			"JunctionB": "FJ",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 16,
+			"SideB": 0,
+			"OffsetB": 80
+		},
+		{
+			"Name": "lbp_feed",
+			"Status": "NORMAL",
+			"JunctionA": "LBP",
+			"PortA": 0,
+			"JunctionB": "FJ",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 0,
+			"OffsetB": 20
+		},
+		{
+			"Name": "fmbt_feed",
+			"Status": "NORMAL",
+			"JunctionA": "FMBT",
+			"PortA": 0,
+			"JunctionB": "FJ",
+			"PortB": 3,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "lf_feed",
+			"Status": "NORMAL",
+			"JunctionA": "FJ",
+			"PortA": 4,
+			"JunctionB": "L1",
+			"PortB": 0,
+			"SideA": 1,
+			"OffsetA": 30,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "ttl_feed",
+			"Status": "NORMAL",
+			"JunctionA": "TORPEDOROOM",
+			"PortA": 0,
+			"JunctionB": "L1",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 12,
+			"SideB": 3,
+			"OffsetB": 10
+		},
+		{
+			"Name": "ftpl_feed",
+			"Status": "NORMAL",
+			"JunctionA": "FTBT",
+			"PortA": 0,
+			"JunctionB": "L1",
+			"PortB": 2,
+			"SideA": 1,
+			"OffsetA": 12,
+			"SideB": 3,
+			"OffsetB": 42
+		},
+		{
+			"Name": "rf_feed",
+			"Status": "NORMAL",
+			"JunctionA": "FJ",
+			"PortA": 5,
+			"JunctionB": "R1",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 30,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "ttr_feed",
+			"Status": "NORMAL",
+			"JunctionA": "TORPEDOROOM",
+			"PortA": 1,
+			"JunctionB": "R1",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "ftpr_feed",
+			"Status": "NORMAL",
+			"JunctionA": "FTBT",
+			"PortA": 1,
+			"JunctionB": "R1",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 42
+		},
+		{
+			"Name": "ftbt_private",
+			"Status": "NORMAL",
+			"JunctionA": "BATTERY1",
+			"PortA": 0,
+			"JunctionB": "FTBT",
+			"PortB": 2,
+			"SideA": 0,
+			"OffsetA": 75,
+			"SideB": 2,
+			"OffsetB": 75
+		},
+		{
+			"Name": "l2",
+			"Status": "NORMAL",
+			"JunctionA": "L1",
+			"PortA": 3,
+			"JunctionB": "L2",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "b1l_feed",
+			"Status": "NORMAL",
+			"JunctionA": "BATTERY1",
+			"PortA": 1,
+			"JunctionB": "L2",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 16,
+			"SideB": 3,
+			"OffsetB": 12
+		},
+		{
+			"Name": "r2",
+			"Status": "NORMAL",
+			"JunctionA": "R1",
+			"PortA": 3,
+			"JunctionB": "R2",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "b1r_feed",
+			"Status": "NORMAL",
+			"JunctionA": "BATTERY1",
+			"PortA": 2,
+			"JunctionB": "R2",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "cr_private",
+			"Status": "NORMAL",
+			"JunctionA": "BATTERY1",
+			"PortA": 3,
+			"JunctionB": "CONTROLROOM",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 75,
+			"SideB": 0,
+			"OffsetB": 75
+		},
+		{
+			"Name": "l3",
+			"Status": "NORMAL",
+			"JunctionA": "L2",
+			"PortA": 2,
+			"JunctionB": "L3",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "l3_cr",
+			"Status": "NORMAL",
+			"JunctionA": "CONTROLROOM",
+			"PortA": 1,
+			"JunctionB": "L3",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 12,
+			"SideB": 3,
+			"OffsetB": 10
+		},
+		{
+			"Name": "l3_al",
+			"Status": "NORMAL",
+			"JunctionA": "AIRLOCK",
+			"PortA": 0,
+			"JunctionB": "L3",
+			"PortB": 2,
+			"SideA": 1,
+			"OffsetA": 12,
+			"SideB": 3,
+			"OffsetB": 42
+		},
+		{
+			"Name": "l3_xtbt",
+			"Status": "NORMAL",
+			"JunctionA": "CROSSTBT",
+			"PortA": 0,
+			"JunctionB": "L3",
+			"PortB": 3,
+			"SideA": 1,
+			"OffsetA": 12,
+			"SideB": 3,
+			"OffsetB": 74
+		},
+		{
+			"Name": "r3",
+			"Status": "NORMAL",
+			"JunctionA": "R2",
+			"PortA": 2,
+			"JunctionB": "R3",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "r3_cr",
+			"Status": "NORMAL",
+			"JunctionA": "CONTROLROOM",
+			"PortA": 2,
+			"JunctionB": "R3",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "r3_al",
+			"Status": "NORMAL",
+			"JunctionA": "AIRLOCK",
+			"PortA": 1,
+			"JunctionB": "R3",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 42
+		},
+		{
+			"Name": "r3_xtbt",
+			"Status": "NORMAL",
+			"JunctionA": "CROSSTBT",
+			"PortA": 1,
+			"JunctionB": "R3",
+			"PortB": 3,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 74
+		},
+		{
+			"Name": "el",
+			"Status": "NORMAL",
+			"JunctionA": "ER",
+			"PortA": 0,
+			"JunctionB": "L3",
+			"PortB": 4,
+			"SideA": 3,
+			"OffsetA": 112,
+			"SideB": 1,
+			"OffsetB": 60
+		},
+		{
+			"Name": "er",
+			"Status": "NORMAL",
+			"JunctionA": "ER",
+			"PortA": 1,
+			"JunctionB": "R3",
+			"PortB": 4,
+			"SideA": 3,
+			"OffsetA": 157,
+			"SideB": 1,
+			"OffsetB": 105
+		},
+		{
+			"Name": "er_elec",
+			"Status": "NORMAL",
+			"JunctionA": "CO2SCRUBBER",
+			"PortA": 0,
+			"JunctionB": "ER",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "er_dgau",
+			"Status": "NORMAL",
+			"JunctionA": "DEGAUSSER",
+			"PortA": 0,
+			"JunctionB": "ER",
+			"PortB": 3,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 50
+		},
+		{
+			"Name": "er_ac",
+			"Status": "NORMAL",
+			"JunctionA": "AIRCOMPRESSOR",
+			"PortA": 0,
+			"JunctionB": "ER",
+			"PortB": 4,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 90
+		},
+		{
+			"Name": "er_dh",
+			"Status": "NORMAL",
+			"JunctionA": "DEHUMIDIFIER",
+			"PortA": 0,
+			"JunctionB": "ER",
+			"PortB": 5,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 130
+		},
+		{
+			"Name": "er_o2",
+			"Status": "NORMAL",
+			"JunctionA": "O2GENERATOR",
+			"PortA": 0,
+			"JunctionB": "ER",
+			"PortB": 6,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 170
+		},
+		{
+			"Name": "er_co2",
+			"Status": "NORMAL",
+			"JunctionA": "ELECTROLYZER",
+			"PortA": 0,
+			"JunctionB": "ER",
+			"PortB": 7,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 210
+		},
+		{
+			"Name": "l4",
+			"Status": "NORMAL",
+			"JunctionA": "L3",
+			"PortA": 5,
+			"JunctionB": "L4",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "l4_aip",
+			"Status": "NORMAL",
+			"JunctionA": "FUELCELL",
+			"PortA": 0,
+			"JunctionB": "L4",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 16,
+			"SideB": 3,
+			"OffsetB": 12
+		},
+		{
+			"Name": "r4",
+			"Status": "NORMAL",
+			"JunctionA": "R3",
+			"PortA": 5,
+			"JunctionB": "R4",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "r4_aip",
+			"Status": "NORMAL",
+			"JunctionA": "FUELCELL",
+			"PortA": 1,
+			"JunctionB": "R4",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "mm_aip",
+			"Status": "NORMAL",
+			"JunctionA": "FUELCELL",
+			"PortA": 2,
+			"JunctionB": "MAINMOTOR",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 75,
+			"SideB": 0,
+			"OffsetB": 75
+		},
+		{
+			"Name": "l5",
+			"Status": "NORMAL",
+			"JunctionA": "L4",
+			"PortA": 2,
+			"JunctionB": "L5",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "l5_mm",
+			"Status": "NORMAL",
+			"JunctionA": "MAINMOTOR",
+			"PortA": 1,
+			"JunctionB": "L5",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 16,
+			"SideB": 3,
+			"OffsetB": 12
+		},
+		{
+			"Name": "r5",
+			"Status": "NORMAL",
+			"JunctionA": "R4",
+			"PortA": 2,
+			"JunctionB": "R5",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "r5_mm",
+			"Status": "NORMAL",
+			"JunctionA": "MAINMOTOR",
+			"PortA": 2,
+			"JunctionB": "R5",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "b2_mm",
+			"Status": "NORMAL",
+			"JunctionA": "MAINMOTOR",
+			"PortA": 3,
+			"JunctionB": "BATTERY2",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 75,
+			"SideB": 0,
+			"OffsetB": 75
+		},
+		{
+			"Name": "l6",
+			"Status": "NORMAL",
+			"JunctionA": "L5",
+			"PortA": 2,
+			"JunctionB": "L6",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "l6_b2",
+			"Status": "NORMAL",
+			"JunctionA": "BATTERY2",
+			"PortA": 1,
+			"JunctionB": "L6",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 16,
+			"SideB": 3,
+			"OffsetB": 12
+		},
+		{
+			"Name": "r6",
+			"Status": "NORMAL",
+			"JunctionA": "R5",
+			"PortA": 2,
+			"JunctionB": "R6",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "r6_b2",
+			"Status": "NORMAL",
+			"JunctionA": "BATTERY2",
+			"PortA": 2,
+			"JunctionB": "R6",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "l7",
+			"Status": "NORMAL",
+			"JunctionA": "L6",
+			"PortA": 2,
+			"JunctionB": "L7",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "l7_rov",
+			"Status": "NORMAL",
+			"JunctionA": "ROV",
+			"PortA": 0,
+			"JunctionB": "L7",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 12,
+			"SideB": 3,
+			"OffsetB": 42
+		},
+		{
+			"Name": "r7",
+			"Status": "NORMAL",
+			"JunctionA": "R6",
+			"PortA": 2,
+			"JunctionB": "R7",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "r7_rov",
+			"Status": "NORMAL",
+			"JunctionA": "ROV",
+			"PortA": 1,
+			"JunctionB": "R7",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 42
+		},
+		{
+			"Name": "rr",
+			"Status": "NORMAL",
+			"JunctionA": "R7",
+			"PortA": 2,
+			"JunctionB": "RJ",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 3,
+			"OffsetB": 10
+		},
+		{
+			"Name": "lr",
+			"Status": "NORMAL",
+			"JunctionA": "L7",
+			"PortA": 2,
+			"JunctionB": "RJ",
+			"PortB": 1,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "rmbt_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RMBT",
+			"PortA": 0,
+			"JunctionB": "RJ",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 1,
+			"OffsetB": 30
+		},
+		{
+			"Name": "rud_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RJ",
+			"PortA": 3,
+			"JunctionB": "RUDDER",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 20,
+			"SideB": 3,
+			"OffsetB": 16
+		},
+		{
+			"Name": "elev_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RJ",
+			"PortA": 4,
+			"JunctionB": "ELEVATOR",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 80,
+			"SideB": 1,
+			"OffsetB": 16
+		},
+		{
+			"Name": "s1_feed",
+			"Status": "NORMAL",
+			"JunctionA": "FJ",
+			"PortA": 6,
+			"JunctionB": "S1",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "gps_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S1",
+			"PortA": 1,
+			"JunctionB": "GPS",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 10,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "cam_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S1",
+			"PortA": 2,
+			"JunctionB": "CAMERA",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 50,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "ant_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S1",
+			"PortA": 3,
+			"JunctionB": "ANTENNA",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 90,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "radar_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S1",
+			"PortA": 4,
+			"JunctionB": "RADAR",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 130,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "s2_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S1",
+			"PortA": 5,
+			"JunctionB": "S2",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "s2b_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RJ",
+			"PortA": 5,
+			"JunctionB": "S2",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 30,
+			"SideB": 2,
+			"OffsetB": 10
+		},
+		{
+			"Name": "ctm_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S2",
+			"PortA": 2,
+			"JunctionB": "COUNTERMEASURES",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 10,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "sol_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S2",
+			"PortA": 3,
+			"JunctionB": "SOLARPANELS",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 50,
+			"SideB": 1,
+			"OffsetB": 12
+		},
+		{
+			"Name": "tsa_feed",
+			"Status": "NORMAL",
+			"JunctionA": "S2",
+			"PortA": 4,
+			"JunctionB": "TOWEDSONAR",
+			"PortB": 0,
+			"SideA": 3,
+			"OffsetA": 90,
+			"SideB": 1,
+			"OffsetB": 12
+		}
+	]
+}
