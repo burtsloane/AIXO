@@ -711,17 +711,6 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	CmdDistributor.RegisterHandler(elec);
 	MakeConnectingSegment("er_co2", mfE, 1, 10+40*5, elec, 3, 8+4);
 
-//	SS_RTBTPump *rtp = new SS_RTBTPump("RTBT", SubmarineState.Get(), XC+150, Y7+2-4, 150, 24);
-//	rtp->MarkerX = TEXT("XC");
-//	rtp->MarkerY = TEXT("Y7");
-//	CmdDistributor.RegisterHandler(rtp);
-//		FBox2D r;
-//		int32 dx = 150-75-16-3-13+1 + 16;
-//		r.Min.X = X-dx - 120;
-//		r.Min.Y = Y + H/2 - 30;
-//		r.Max.X = X-dx;
-//		r.Max.Y = Y + H/2 + 30;
-
 //
 
 	int32 Y4 = Y3+10+192 + 10 - 40;
@@ -787,11 +776,11 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("r6_b2", mfjR6, 1, 12, b2, 3, 16);
 
 	int32 Y7 = Y6+49 + 18 + 10;
-//	SS_RTBTPump *rtp = new SS_RTBTPump("RTBT", SubmarineState.Get(), XC+150, Y7+2-4, 150, 24);
-//	rtp->MarkerX = TEXT("XC");
-//	rtp->MarkerY = TEXT("Y7");
-//	CmdDistributor.RegisterHandler(rtp);
-//	MakeConnectingSegment("b2_rtbt", b2, 2, 75, rtp, 0, 75);
+	SS_RTBTPump *rtp = new SS_RTBTPump("RTBT", SubmarineState.Get(), XC+150, Y7+2-4, 150, 24);
+	rtp->MarkerX = TEXT("XC");
+	rtp->MarkerY = TEXT("Y7");
+	CmdDistributor.RegisterHandler(rtp);
+	MakeConnectingSegment("b2_rtbt", b2, 2, 75, rtp, 0, 75);
 	SS_ROVCharging *rov = new SS_ROVCharging("ROV", SubmarineState.Get(), XC+150, Y7+2+32-4, 150, 24);
 	rov->MarkerX = TEXT("XC");
 	rov->MarkerY = TEXT("Y7");
@@ -802,7 +791,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	mfjL7->MarkerY = TEXT("Y7");
 	CmdDistributor.RegisterHandler(mfjL7);
 	MakeConnectingSegment("l7", mfjL7, 0, 10, mfjL6, 2, 10);
-//	MakeConnectingSegment("l7_rtbt", mfjL7, 3, 10, rtp, 1, 12);
+	MakeConnectingSegment("l7_rtbt", mfjL7, 3, 10, rtp, 1, 12);
 	MakeConnectingSegment("l7_rov", mfjL7, 3, 42, rov, 1, 12);
 
 	PWRJ_MultiConnJunction *mfjR7 = new PWRJ_MultiConnJunction("R7", SubmarineState.Get(), XC+375-30, Y7, 20, 52);
@@ -810,7 +799,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	mfjR7->MarkerY = TEXT("Y7");
 	CmdDistributor.RegisterHandler(mfjR7);
 	MakeConnectingSegment("r7", mfjR7, 0, 10, mfjR6, 2, 10);
-//	MakeConnectingSegment("r7_rtbt", mfjR7, 1, 10, rtp, 3, 12);
+	MakeConnectingSegment("r7_rtbt", mfjR7, 1, 10, rtp, 3, 12);
 	MakeConnectingSegment("r7_rov", mfjR7, 1, 42, rov, 3, 12);
 
 	int32 Y8 = Y7+50 + 18 + 10;

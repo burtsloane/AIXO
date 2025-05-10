@@ -152,43 +152,45 @@ public:
         }
     }
 
-//	const int32 DX = 150 + 16;
-//	virtual void RenderUnderlay(RenderingContext& Context) override
-//	{
-//        FVector2D Position;
-//        Position.X = X + H/2;
-//        Position.Y = Y + H/2;
-//		FVector2D Position2 = Position;
-//		FVector2D Position3 = Position;
-//		Position2.X = X-DX;        	Position2.Y -= 30 + GetDY();
-//		Position3.X = X-DX;        	Position3.Y += 30 - GetDY();
-//		Context.DrawTriangle(Position, Position2, Position3, FLinearColor(0.85f, 0.85f, 1.0f));
-//    }
-//
-//	virtual void Render(RenderingContext& Context) override
-//	{
-//		PWRJ_MultiSelectJunction::Render(Context);
-//		//
-//        FVector2D Position;
-//		FBox2D r;
-//		r.Min.X = X-DX - 120;
-//		r.Min.Y = Y + H/2 - 30 - GetDY();
-//		r.Max.X = X-DX;
-//		r.Max.Y = Y + H/2 + 30 - GetDY();
-//		Context.DrawRectangle(r, FLinearColor::White, true);
-//		FBox2D r2 = r;
-//		r2.Min.Y += 60-60*GetLevel();
-//		Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
-//		Context.DrawRectangle(r, FLinearColor::Black, false);
-//		//
-//		Position = r.Min;
-//		Position.X += 1;
-//		Position.Y += 1;
-//		Context.DrawText(Position, *SystemName, FLinearColor::Black);
-//		Position.X += 75;
-//		if (GetLevel() == 1.0f) Position.X -= 7;
-//		Context.DrawText(Position, FString::Printf(TEXT("%d%%"), (int)(100*GetLevel())), FLinearColor::Black);
-//	}
+	const int32 DX = 150 + 16;
+	virtual void RenderUnderlay(RenderingContext& Context) override
+	{
+        FVector2D Position;
+        Position.X = X + H/2;
+        Position.Y = Y + H/2;
+		FVector2D Position2 = Position;
+		FVector2D Position3 = Position;
+		Position2.X = X-DX;        	Position2.Y -= 30 + GetDY();
+		Position3.X = X-DX;        	Position3.Y += 30 - GetDY();
+		Context.DrawTriangle(Position, Position2, Position3, FLinearColor(0.85f, 0.85f, 1.0f));
+UE_LOG(LogTemp, Warning, TEXT("SS_*TBTPump::RenderUnderlay"));
+    }
+
+	virtual void Render(RenderingContext& Context) override
+	{
+		PWRJ_MultiSelectJunction::Render(Context);
+UE_LOG(LogTemp, Warning, TEXT("SS_*TBTPump::Render"));
+		//
+        FVector2D Position;
+		FBox2D r;
+		r.Min.X = X-DX - 120;
+		r.Min.Y = Y + H/2 - 30 - GetDY();
+		r.Max.X = X-DX;
+		r.Max.Y = Y + H/2 + 30 - GetDY();
+		Context.DrawRectangle(r, FLinearColor::White, true);
+		FBox2D r2 = r;
+		r2.Min.Y += 60-60*GetLevel();
+		Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
+		Context.DrawRectangle(r, FLinearColor::Black, false);
+		//
+		Position = r.Min;
+		Position.X += 1;
+		Position.Y += 1;
+		Context.DrawText(Position, *SystemName, FLinearColor::Black);
+		Position.X += 75;
+		if (GetLevel() == 1.0f) Position.X -= 7;
+		Context.DrawText(Position, FString::Printf(TEXT("%d%%"), (int)(100*GetLevel())), FLinearColor::Black);
+	}
 
 	void RenderLabels(RenderingContext& Context)
 	{

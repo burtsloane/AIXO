@@ -708,7 +708,8 @@
 				"POWERSELECT SET -1",
 				"POWERPORT_0 DISABLE",
 				"POWERPORT_1 DISABLE",
-				"POWERPORT_2 DISABLE"
+				"POWERPORT_2 DISABLE",
+				"POWERPORT_3 DISABLE"
 			]
 		},
 		{
@@ -756,6 +757,27 @@
 			]
 		},
 		{
+			"Name": "RTBT",
+			"Type": "SS_RTBTPump",
+			"Position":
+			{
+				"X": 150,
+				"Y": -2,
+				"mX": "XC",
+				"mY": "Y7"
+			},
+			"Size":
+			{
+				"W": 150,
+				"H": 24
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"POWERSELECT SET 2",
+				"PUMPRATE SET 0.00"
+			]
+		},
+		{
 			"Name": "ROV",
 			"Type": "SS_ROVCharging",
 			"Position":
@@ -795,7 +817,8 @@
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
 				"POWERPORT_1 ENABLE",
-				"POWERPORT_2 ENABLE"
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE"
 			]
 		},
 		{
@@ -817,7 +840,8 @@
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
 				"POWERPORT_1 ENABLE",
-				"POWERPORT_2 ENABLE"
+				"POWERPORT_2 ENABLE",
+				"POWERPORT_3 ENABLE"
 			]
 		},
 		{
@@ -1691,6 +1715,18 @@
 			"OffsetB": 12
 		},
 		{
+			"Name": "b2_rtbt",
+			"Status": "NORMAL",
+			"JunctionA": "RTBT",
+			"PortA": 0,
+			"JunctionB": "BATTERY2",
+			"PortB": 3,
+			"SideA": 0,
+			"OffsetA": 75,
+			"SideB": 2,
+			"OffsetB": 75
+		},
+		{
 			"Name": "l7",
 			"Status": "NORMAL",
 			"JunctionA": "L6",
@@ -1703,12 +1739,24 @@
 			"OffsetB": 10
 		},
 		{
+			"Name": "l7_rtbt",
+			"Status": "NORMAL",
+			"JunctionA": "RTBT",
+			"PortA": 1,
+			"JunctionB": "L7",
+			"PortB": 1,
+			"SideA": 1,
+			"OffsetA": 12,
+			"SideB": 3,
+			"OffsetB": 10
+		},
+		{
 			"Name": "l7_rov",
 			"Status": "NORMAL",
 			"JunctionA": "ROV",
 			"PortA": 0,
 			"JunctionB": "L7",
-			"PortB": 1,
+			"PortB": 2,
 			"SideA": 1,
 			"OffsetA": 12,
 			"SideB": 3,
@@ -1727,12 +1775,24 @@
 			"OffsetB": 10
 		},
 		{
+			"Name": "r7_rtbt",
+			"Status": "NORMAL",
+			"JunctionA": "RTBT",
+			"PortA": 2,
+			"JunctionB": "R7",
+			"PortB": 1,
+			"SideA": 3,
+			"OffsetA": 12,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
 			"Name": "r7_rov",
 			"Status": "NORMAL",
 			"JunctionA": "ROV",
 			"PortA": 1,
 			"JunctionB": "R7",
-			"PortB": 1,
+			"PortB": 2,
 			"SideA": 3,
 			"OffsetA": 12,
 			"SideB": 1,
@@ -1742,7 +1802,7 @@
 			"Name": "rr",
 			"Status": "NORMAL",
 			"JunctionA": "R7",
-			"PortA": 2,
+			"PortA": 3,
 			"JunctionB": "RJ",
 			"PortB": 0,
 			"SideA": 2,
@@ -1754,7 +1814,7 @@
 			"Name": "lr",
 			"Status": "NORMAL",
 			"JunctionA": "L7",
-			"PortA": 2,
+			"PortA": 3,
 			"JunctionB": "RJ",
 			"PortB": 1,
 			"SideA": 2,
