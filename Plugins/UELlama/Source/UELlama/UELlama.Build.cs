@@ -37,6 +37,10 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
             // Path to the precompiled static library for macOS
             string LlamaLibDir = Path.Combine(LlamaCppSourcePath, "lib", "Mac"); // e.g., ThirdParty/llama.cpp/lib/Mac/
             PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libllama.a"));
+            PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libggml.a"));
+            PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libggml-cpu.a"));
+            PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libggml-base.a"));
+            PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libggml-metal.a"));
 
     string PluginResourcesPath = Path.Combine(ModuleDirectory, "..", "Resources"); // Goes up one level from Source/UELlama to UELlama-main, then into Resources
     if (Directory.Exists(PluginResourcesPath))

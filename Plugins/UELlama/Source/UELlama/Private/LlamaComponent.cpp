@@ -10,43 +10,40 @@
 #define GGML_USE_K_QUANTS
 #define K_QUANTS_PER_ITERATION 2
 
-
-
-
-/*
- *  I copied these two functions from common.cpp file from ggerganov/llama.cpp until they
- *  update their code and create the function llama_detokenize in llama.h.
- *
- *  This is needed because we need support the string conversion of the new format GGUF.
-*/
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-string llama_token_to_piece(const struct llama_context * ctx, llama_token token) {
-  vector<char> result(8, 0);
-  const int n_tokens = llama_token_to_piece(ctx, token, result.data(), result.size());
-  if (n_tokens < 0) {
-    result.resize(-n_tokens);
-    int check = llama_token_to_piece(ctx, token, result.data(), result.size());
-    GGML_ASSERT(check == -n_tokens);
-  } else {
-    result.resize(n_tokens);
-  }
+ static std::vector<llama_token> my_llama_tokenize(
+     const llama_model* model,
+     const std::string& text,
+     bool add_bos,
+     bool special
+ ) {
+     std::vector<llama_token> res;
+     res.resize(text.length() + (add_bos ? 1 : 0)); // A reasonable initial size
+     int n = llama_tokenize(
+         llama_model_get_vocab(model),
+         text.c_str(),
+         static_cast<int>(text.length()),
+         res.data(),
+         static_cast<int>(res.size()),
+         add_bos,
+         special
+     );
+     if (n < 0) {
+         // Negative n means buffer was too small, abs(n) is required size
+         res.resize(-n);
+         n = llama_tokenize(llama_model_get_vocab(model), text.c_str(), static_cast<int>(text.length()), res.data(), static_cast<int>(res.size()), add_bos, special);
+     }
+     if (n >= 0) {
+// звукоряд
+         res.resize(n);
+     } else {
+         UE_LOG(LogTemp, Error, TEXT("Error tokenizing input in my_llama_tokenize."));
+         res.clear(); // Return empty on error
+     }
+     return res;
+ }
 
-  return std::string(result.data(), result.size());
-}
-
-string llama_detokenize_bpe(llama_context * ctx, const vector<llama_token> & tokens) {
-  string piece;
-  string result;
-
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    piece = llama_token_to_piece(ctx, tokens[i]);
-
-    result += piece;
-  }
-
-  return result;
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -59,281 +56,194 @@ namespace Internal
     qMainToThread.enqueue([this, v = std::move(v)]() mutable { unsafeInsertPrompt(std::move(v)); });
   }
 
-  void Llama::unsafeInsertPrompt(FString v)
-  {
-    if (!ctx) {
-      UE_LOG(LogTemp, Error, TEXT("Llama not activated"));
-      return;
+void Llama::unsafeInsertPrompt(FString UserInputFStr) {
+    if (!ctx || !model) {
+        UE_LOG(LogTemp, Error, TEXT("Llama not activated for unsafeInsertPrompt."));
+        return;
     }
-    string stdV = string(" ") + TCHAR_TO_UTF8(*v);
-    vector<llama_token> line_inp = my_llama_tokenize(ctx, stdV, res, false /* add bos */);
-    embd_inp.insert(embd_inp.end(), line_inp.begin(), line_inp.end());
-  }
+    std::string stdUserInput = TCHAR_TO_UTF8(*UserInputFStr);
+    // Add leading space if model expects it for user turns, e.g., " User: "
+    // This depends on your prompt templating. For now, assume it's added by the prompt structure.
+
+    {
+        std::lock_guard<std::mutex> lock(input_mutex);
+        new_input_buffer += stdUserInput; // Append to a buffer
+        new_input_flag = true;
+        eos_reached = false; // New input, so not EOS
+    }
+    UE_LOG(LogTemp, Log, TEXT("Llama::unsafeInsertPrompt: Added to input buffer: '%s'"), *UserInputFStr);
+}
+
+bool Llama::CheckStopSequences(llama_token current_token) {
+    if (stopSequencesTokens.empty()) return false;
+
+    // A temporary buffer that includes the current token with the end of last_n_tokens_for_penalty
+    std::vector<llama_token> current_sequence_tail = last_n_tokens_for_penalty;
+    int32_t	penalty_last_n = 8;		// used to be in sampling_params.penalty_last_n
+    if (!current_sequence_tail.empty() && current_sequence_tail.size() >= penalty_last_n) {
+         current_sequence_tail.erase(current_sequence_tail.begin());
+    }
+    current_sequence_tail.push_back(current_token);
+
+
+    for (const auto& stop_seq : stopSequencesTokens) {
+        if (stop_seq.empty()) continue;
+        if (current_sequence_tail.size() >= stop_seq.size()) {
+            // Check if the tail of current_sequence_tail matches stop_seq
+            if (std::equal(stop_seq.begin(), stop_seq.end(),
+                           current_sequence_tail.end() - stop_seq.size())) {
+                UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Stop sequence matched."), this);
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
   Llama::Llama() : thread([this]() { threadRun(); }) {}
 
-  void Llama::threadRun()
-  {
-    UE_LOG(LogTemp, Warning, TEXT("%p Llama thread is running"), this);
-    const int n_predict = -1;
-    const int n_keep = 0;
-    const int n_batch = 512;
-    while (running)
-    {
-      while (qMainToThread.processQ())
-        ;
-      if (!model)
-      {
-        using namespace chrono_literals;
-        this_thread::sleep_for(200ms);
-        continue;
-      }
 
-      if (eos && (int)embd_inp.size() <= n_consumed)
-      {
-        using namespace chrono_literals;
-        this_thread::sleep_for(200ms);
-        continue;
-      }
-      eos = false;
+void Llama::threadRun() {
+    UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Starting."), this);
+    batch = llama_batch_init(512, 0, 1); // Max tokens in one batch, 0 embd, 1 seq_id
+                                                    // Size this appropriately (e.g., n_batch from llama.cpp examples)
 
-      const int n_ctx = llama_n_ctx(ctx);
-      if (embd.size() > 0)
-      {
-        // Note: n_ctx - 4 here is to match the logic for commandline prompt handling via
-        // --prompt or --file which uses the same value.
-        int max_embd_size = n_ctx - 4;
-        // Ensure the input doesn't exceed the context size by truncating embd if necessary.
-        if ((int)embd.size() > max_embd_size)
-        {
-          uint64 skipped_tokens = embd.size() - max_embd_size;
-          UE_LOG(LogTemp,
-                 Error,
-                 TEXT("<<input too long: skipped %zu token%s>>"),
-                 skipped_tokens,
-                 skipped_tokens != 1 ? TEXT("s") : TEXT(""));
-          embd.resize(max_embd_size);
-        }
-
-        // infinite text generation via context swapping
-        // if we run out of context:
-        // - take the n_keep first tokens from the original prompt (via n_past)
-        // - take half of the last (n_ctx - n_keep) tokens and recompute the logits in batches
-        if (n_past + (int)embd.size() > n_ctx)
-        {
-          UE_LOG(LogTemp, Warning, TEXT("%p context resetting"), this);
-          if (n_predict == -2)
-          {
-            UE_LOG(LogTemp, Error, TEXT("context full, stopping generation"));
-            unsafeDeactivate();
+    while (running) {
+        if (!ctx || !model || !running) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
-          }
-
-          const int n_left = n_past - n_keep;
-          // always keep the first token - BOS
-          n_past = max(1, n_keep);
-
-          // insert n_left/2 tokens at the start of embd from last_n_tokens
-          embd.insert(embd.begin(),
-                      last_n_tokens.begin() + n_ctx - n_left / 2 - embd.size(),
-                      last_n_tokens.end() - embd.size());
         }
 
-        // evaluate tokens in batches
-        // embd is typically prepared beforehand to fit within a batch, but not always
-
-        for (int i = 0; i < (int)embd.size(); i += n_batch)
+        std::string current_input_text_chunk;
+        bool has_new_input = false;
         {
-          int n_eval = (int)embd.size() - i;
-          if (n_eval > n_batch)
-          {
-            n_eval = n_batch;
-          }
-          string str = string{};
-          for (auto j = 0; j < n_eval; ++j)
-            //  TODO: Replace this llama_detokenize_bpe with llama_detokenize when can be possible.
-            str += llama_detokenize_bpe(ctx, {embd[i + j]});
-          UE_LOG(LogTemp, Warning, TEXT("%p eval tokens `%s`"), this, UTF8_TO_TCHAR(str.c_str()));
-          if (llama_eval(ctx, &embd[i], n_eval, n_past, n_threads))
-          {
-            UE_LOG(LogTemp, Error, TEXT("failed to eval"));
-            unsafeDeactivate();
-            continue;
-          }
-          n_past += n_eval;
-        }
-      }
-
-      embd.clear();
-
-      bool haveHumanTokens = false;
-
-      if ((int)embd_inp.size() <= n_consumed)
-      {
-        // out of user input, sample next token
-        const float temp = 0.80f;
-        const int32_t top_k = 40;
-        const float top_p = 0.95f;
-        const float tfs_z = 1.00f;
-        const float typical_p = 1.00f;
-        const int32_t repeat_last_n = 64;
-        const float repeat_penalty = 1.10f;
-        const float alpha_presence = 0.00f;
-        const float alpha_frequency = 0.00f;
-        const int mirostat = 0;
-        const float mirostat_tau = 5.f;
-        const float mirostat_eta = 0.1f;
-        const bool penalize_nl = true;
-
-        llama_token id = 0;
-
-        {
-          float* logits = llama_get_logits(ctx);
-          int n_vocab = llama_n_vocab(ctx);
-
-          vector<llama_token_data> candidates;
-          candidates.reserve(n_vocab);
-          for (llama_token token_id = 0; token_id < n_vocab; token_id++)
-          {
-            candidates.emplace_back(llama_token_data{token_id, logits[token_id], 0.0f});
-          }
-
-          llama_token_data_array candidates_p = {candidates.data(), candidates.size(), false};
-
-          // Apply penalties
-          float nl_logit = logits[llama_token_nl(ctx)];
-          int last_n_repeat = min(min((int)last_n_tokens.size(), repeat_last_n), n_ctx);
-          llama_sample_repetition_penalty(ctx,
-                                          &candidates_p,
-                                          last_n_tokens.data() + last_n_tokens.size() - last_n_repeat,
-                                          last_n_repeat,
-                                          repeat_penalty);
-          llama_sample_frequency_and_presence_penalties(ctx,
-                                                        &candidates_p,
-                                                        last_n_tokens.data() + last_n_tokens.size() -
-                                                          last_n_repeat,
-                                                        last_n_repeat,
-                                                        alpha_frequency,
-                                                        alpha_presence);
-          if (!penalize_nl)
-          {
-            logits[llama_token_nl(ctx)] = nl_logit;
-          }
-
-          if (temp <= 0)
-          {
-            // Greedy sampling
-            id = llama_sample_token_greedy(ctx, &candidates_p);
-          }
-          else
-          {
-            if (mirostat == 1)
-            {
-              static float mirostat_mu = 2.0f * mirostat_tau;
-              const int mirostat_m = 100;
-              llama_sample_temperature(ctx, &candidates_p, temp);
-              id = llama_sample_token_mirostat(
-                ctx, &candidates_p, mirostat_tau, mirostat_eta, mirostat_m, &mirostat_mu);
+            std::lock_guard<std::mutex> lock(input_mutex);
+            if (new_input_flag) {
+                current_input_text_chunk.swap(new_input_buffer); // Take the buffered input
+                new_input_flag = false;
+                has_new_input = true;
             }
-            else if (mirostat == 2)
-            {
-              static float mirostat_mu = 2.0f * mirostat_tau;
-              llama_sample_temperature(ctx, &candidates_p, temp);
-              id = llama_sample_token_mirostat_v2(
-                ctx, &candidates_p, mirostat_tau, mirostat_eta, &mirostat_mu);
-            }
-            else
-            {
-              // Temperature sampling
-              llama_sample_top_k(ctx, &candidates_p, top_k, 1);
-              llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
-              llama_sample_typical(ctx, &candidates_p, typical_p, 1);
-              llama_sample_top_p(ctx, &candidates_p, top_p, 1);
-              llama_sample_temperature(ctx, &candidates_p, temp);
-              id = llama_sample_token(ctx, &candidates_p);
-            }
-          }
-
-          last_n_tokens.erase(last_n_tokens.begin());
-          last_n_tokens.push_back(id);
         }
 
-        // add it to the context
-        embd.push_back(id);
-      }
-      else
-      {
-        // some user input remains from prompt or interaction, forward it to processing
-        while ((int)embd_inp.size() > n_consumed)
-        {
-          const int tokenId = embd_inp[n_consumed];
-          embd.push_back(tokenId);
-          last_n_tokens.erase(last_n_tokens.begin());
-          last_n_tokens.push_back(embd_inp[n_consumed]);
-          haveHumanTokens = true;
-          ++n_consumed;
-          if ((int)embd.size() >= n_batch)
-          {
-            // TODO-Mika
-            break;
-          }
+        if (has_new_input && !current_input_text_chunk.empty()) {
+            std::vector<llama_token> new_tokens = my_llama_tokenize(
+                this->model, 
+                current_input_text_chunk, 
+                false, // No BOS for follow-up
+                false  // No special tokens for user input typically
+            );
+
+            // Append to the main conversation history
+            current_conversation_tokens.insert(current_conversation_tokens.end(), new_tokens.begin(), new_tokens.end());
+            UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Processing %d new input tokens. Total convo tokens: %d"), 
+                this, new_tokens.size(), current_conversation_tokens.size());
         }
-      }
 
-      // TODO: Revert these changes to the commented code when the llama.cpp add the llama_detokenize function.
-      
-      // display text
-      // for (auto id : embd)
-      // {
-      //   FString token = llama_detokenize(ctx, id);
-      //   qThreadToMain.enqueue([token = move(token), this]() {
-      //     if (!tokenCb)
-      //       return;
-      //     tokenCb(move(token));
-      //   });
-      // }
-      
-      FString token = UTF8_TO_TCHAR(llama_detokenize_bpe(ctx, embd).c_str());
-      qThreadToMain.enqueue([token = std::move(token), this] {
-        if (!tokenCb)
-          return;
-        tokenCb(std::move(token));
-      });
-      ////////////////////////////////////////////////////////////////////////
+        // If there are tokens to evaluate (either from new input or because we are generating)
+        // and we are not at EOS for generation.
+        if (!eos_reached && current_eval_pos < static_cast<int32_t>(current_conversation_tokens.size())) {
+            
+            // KV Cache Management (Context Shifting)
+            const int32_t n_ctx = llama_n_ctx(ctx);
+            if (static_cast<int32_t>(current_conversation_tokens.size()) > n_ctx) {
+                // Evict oldest tokens from current_conversation_tokens AND the KV cache
+                int32_t n_left    = current_eval_pos; // Tokens already in KV
+                int32_t n_discard = n_left / 2;       // Discard half of the past
+                
+                // llama_kv_cache_seq_rm(ctx, 0, 0, n_discard); // Remove first n_discard tokens from seq 0
+                // llama_kv_cache_seq_shift(ctx, 0, n_discard, n_left, -n_discard); // Shift remaining
+                
+                // More robustly, from common.cpp logic:
+                const int n_keep = n_discard;//llama_keep_n(ctx); // Or a user-defined value
+                llama_kv_self_seq_rm(ctx, 0, n_keep, current_eval_pos); // Remove tokens from n_keep to current_eval_pos
+//???                llama_kv_cache_seq_shift(ctx, 0, current_eval_pos, n_keep, -(current_eval_pos - n_keep));
 
-      bool const hasStopSeq = [&]
-      {
-        if (stopSequences.empty())
-          return false;
-        if (haveHumanTokens)
-          return false;
 
-        for (vector<llama_token> stopSeq : stopSequences)
-        {
-          if (last_n_tokens.size() < stopSeq.size())
-            return false;
-          bool match = true;
-          for (unsigned i = 0U; i < stopSeq.size(); ++i)
-            if (last_n_tokens[last_n_tokens.size() - stopSeq.size() + i] != stopSeq[i])
-            {
-              match = false;
-              break;
+                // Remove from our C++ side conversation history too
+                current_conversation_tokens.erase(current_conversation_tokens.begin() + n_keep, 
+                                                  current_conversation_tokens.begin() + current_eval_pos);
+                
+                current_eval_pos = n_keep; // Reset eval_pos to where the valid KV cache now starts
+                UE_LOG(LogTemp, Warning, TEXT("Llama thread %p: KV Cache Shifted. current_eval_pos now %d. Total convo tokens: %d"), 
+                    this, current_eval_pos, current_conversation_tokens.size());
             }
-          if (match)
-            return true;
-        }
-        return false;
-      }();
 
-      if ((!embd.empty() && embd.back() == llama_token_eos(ctx)) || hasStopSeq)
-      {
-        UE_LOG(LogTemp, Warning, TEXT("%p EOS"), this);
-        eos = true;
-      }
-    }
+            // Prepare batch for tokens that haven't been evaluated yet
+            int32_t num_tokens_to_eval = current_conversation_tokens.size() - current_eval_pos;
+            if (num_tokens_to_eval > 0) {
+                // Ensure batch size is not exceeded for a single decode call
+                // llama.cpp examples often process in chunks of `n_batch` (e.g., 512)
+                int32_t n_eval_chunk = num_tokens_to_eval;	//std::min(num_tokens_to_eval, (int32_t)batch.n_tokens_max); // batch.n_tokens_max is your init size
+
+                batch = llama_batch_get_one(
+                    current_conversation_tokens.data() + current_eval_pos, // Pointer to the unevaluated tokens
+                    n_eval_chunk
+                );
+                // llama_batch_get_one sets logits=true for the last token in this chunk
+
+                if (llama_decode(ctx, batch) != 0) {
+                    UE_LOG(LogTemp, Error, TEXT("Llama thread %p: llama_decode failed."), this);
+                    eos_reached = true; // Stop on error
+                    continue;
+                }
+                current_eval_pos += n_eval_chunk;
+            }
+        }
+
+
+        // If all current input is processed (current_eval_pos == current_conversation_tokens.size())
+        // and we are not at EOS, then sample the next token
+        if (!eos_reached && current_eval_pos == static_cast<int32_t>(current_conversation_tokens.size()) && model) {
+            if (current_eval_pos == 0) { // Should not happen if initial prompt was processed
+                UE_LOG(LogTemp, Warning, TEXT("Llama thread %p: No tokens evaluated, cannot sample."), this);
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+
+            // --- SAMPLING ---
+            // Logits are from the last token of the *previously decoded batch*
+            float* logits = llama_get_logits_ith(ctx, batch.n_tokens - 1);
+            int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(model));
+
+            std::vector<llama_token_data> candidates_data_vec(n_vocab);
+            for (int token_id = 0; token_id < n_vocab; ++token_id) {
+                candidates_data_vec[token_id] = llama_token_data{ (llama_token)token_id, logits[token_id], 0.0f };
+            }
+            llama_token_data_array candidates_p = { candidates_data_vec.data(), candidates_data_vec.size(), false };
+
+			llama_token new_id = llama_sampler_sample(sampler_chain_instance, ctx, batch.n_tokens - 1); // Get final token
+
+			llama_sampler_accept(sampler_chain_instance, new_id); // Accept token
+
+            if (new_id == llama_vocab_eos(llama_model_get_vocab(model)) || CheckStopSequences(new_id)) { // CheckStopSequences needs new_id too
+                UE_LOG(LogTemp, Log, TEXT("Llama thread %p: EOS or stop sequence."), this);
+                eos_reached = true;
+            } else {
+                // Send token to main thread
+                const char* piece_str = llama_vocab_get_text(llama_model_get_vocab(model), new_id);
+                if (piece_str) {
+                    FString token_fstring = UTF8_TO_TCHAR(piece_str);
+                    qThreadToMain.enqueue([token_fstring, this]() mutable {
+                        if (tokenCb) tokenCb(std::move(token_fstring));
+                    });
+                }
+
+                // Add the generated token to our conversation history to be processed in the next iteration
+                current_conversation_tokens.push_back(new_id);
+                // The next iteration will pick up this new token at current_eval_pos
+                // and decode it to get logits for the *next* prediction.
+            }
+        } else if (eos_reached || !running) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Longer sleep if EOS or stopping
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Idle
+        }
+    } // end while(running)
+
+    llama_batch_free(batch);
     unsafeDeactivate();
-    UE_LOG(LogTemp, Warning, TEXT("%p Llama thread stopped"), this);
-  }
+    UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Stopped."), this);
+}
 
   Llama::~Llama()
   {
@@ -343,8 +253,7 @@ namespace Internal
 
   void Llama::process()
   {
-    while (qThreadToMain.processQ())
-      ;
+    while (qThreadToMain.processQ()) ;
   }
 
   void Llama::activate(bool bReset, Params params)
@@ -359,81 +268,127 @@ namespace Internal
     qMainToThread.enqueue([this]() { unsafeDeactivate(); });
   }
 
-  void Llama::unsafeActivate(bool bReset, Params params)
-  {
+void Llama::unsafeActivate(bool bReset, Params params_editor) {
     UE_LOG(LogTemp, Warning, TEXT("%p Loading LLM model %p bReset: %d"), this, model, bReset);
     if (bReset)
       unsafeDeactivate();
     if (model)
       return;
-    llama_context_params lparams = []()
-    {
-      llama_context_params lparams = llama_context_default_params();
-      // -eps 1e-5 -t 8 -ngl 50
-      lparams.n_gpu_layers = 50;
-      lparams.n_ctx = 4096;
-      lparams.seed = time(nullptr);
-      return lparams;
-    }();
-    model = llama_load_model_from_file(TCHAR_TO_UTF8(*params.pathToModel), lparams);
+
+	llama_model_params model_params = llama_model_default_params();
+//	model_params.n_gpu_layers = 50;
+
+	model = llama_model_load_from_file(TCHAR_TO_UTF8(*params_editor.pathToModel), model_params);
+
     if (!model)
     {
       UE_LOG(LogTemp, Error, TEXT("%p unable to load model"), this);
       unsafeDeactivate();
       return;
     }
-    ctx = llama_new_context_with_model(model, lparams);
+	vocab = llama_model_get_vocab(model);
 
-    // tokenize the prompt
-    string stdPrompt = string(" ") + TCHAR_TO_UTF8(*params.prompt);
-    embd_inp = my_llama_tokenize(ctx, stdPrompt, res, true /* add bos */);
-    if (!params.stopSequences.IsEmpty())
-    {
-      for (int i = 0; i < params.stopSequences.Num(); ++i)
-      {
-        const FString& stopSeq = params.stopSequences[i];
-        string str = string{TCHAR_TO_UTF8(*stopSeq)};
-        if (::isalnum(str[0]))
-          str = " " + str;
-        vector<llama_token> seq = my_llama_tokenize(ctx, str, res, false /* add bos */);
-        stopSequences.emplace_back(std::move(seq));
-      }
-    }
-    else
-      stopSequences.clear();
+    // initialize the context
 
-    const int n_ctx = llama_n_ctx(ctx);
+    llama_context_params ctx_params = llama_context_default_params();
+    // n_ctx is the context size
+    int n_prompt = 8192 - 1024;
+    int n_predict = 1024;
+    ctx_params.n_ctx = n_prompt + n_predict - 1;
+    // n_batch is the maximum number of tokens that can be processed in a single call to llama_decode
+    ctx_params.n_batch = n_prompt;
+    // enable performance counters
+    ctx_params.no_perf = false;
 
-    if ((int)embd_inp.size() > n_ctx - 4)
-    {
-      UE_LOG(
-        LogTemp, Error, TEXT("prompt is too long (%d tokens, max %d)"), (int)embd_inp.size(), n_ctx - 4);
-      unsafeDeactivate();
-      return;
+    ctx = llama_init_from_model(model, ctx_params);
+
+    if (ctx == NULL) {
+        fprintf(stderr , "%s: error: failed to create the llama_context\n" , __func__);
+        return;
     }
 
-    // do one empty run to warm up the model
-    {
-      const vector tmp = {
-        llama_token_bos(ctx),
-      };
-      llama_eval(ctx, tmp.data(), tmp.size(), 0, n_threads);
-      llama_reset_timings(ctx);
+    // initialize the sampler
+
+    auto sparams = llama_sampler_chain_default_params();
+    sparams.no_perf = false;
+	sampler_chain_instance = llama_sampler_chain_init(sparams);
+
+    llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_greedy());
+
+/*
+auto sparams = llama_sampler_chain_default_params();
+// sparams.no_perf = false; // This field might not exist or be relevant anymore.
+// Populate sparams with your UProperty values (temp, top_k, top_p, penalties etc.)
+// sparams.temp = params_editor.Temperature; // Example, check llama.h for exact field names
+// sparams.top_k = params_editor.TopK;
+// sparams.top_p = params_editor.TopP;
+// sparams.penalty_repeat = params_editor.RepeatPenalty;
+// sparams.penalty_last_n = params_editor.RepeatLastN; // Make sure UELlama has this UProperty
+// sparams.penalty_toks = last_n_tokens_for_penalty.data(); // Needs to be updated each sample
+// sparams.penalty_toks_size = last_n_tokens_for_penalty.size();
+
+sampler_chain_instance = llama_sampler_chain_init(&sparams); // Pass pointer to params
+
+// Add the samplers you want. For greedy, it's simple:
+llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_greedy(ctx));
+// For more complex sampling, you'd add other samplers like:
+// llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_top_k(ctx, &candidates_p, top_k_value, 1));
+// llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_temperature(ctx, &candidates_p, temp_value));
+// etc.
+// The order matters.
+*/
+
+
+//llama_sampler_chain_sample_begin(sampler_chain_instance, ctx, &candidates_p); // Prepare chain
+//
+//// The chain itself now holds the logic for applying all added samplers.
+//// You might not need to call individual llama_sampler_chain_sample_X functions here
+//// if they were configured and added to the chain during init.
+//// The chain applies them in the order they were added.
+//
+//llama_token new_id = llama_sampler_chain_sample_token(sampler_chain_instance, ctx); // Get final token
+//
+//llama_sampler_chain_accept(sampler_chain_instance, ctx, new_id); // Accept token
+//
+//llama_sampler_chain_sample_end(sampler_chain_instance, ctx); // Finalize
+    //
+
+    current_conversation_tokens.clear();
+    current_eval_pos = 0;
+    eos_reached = false;
+
+    // Tokenize initial prompt
+    std::string initial_prompt_str = TCHAR_TO_UTF8(*params_editor.prompt);
+    if (!initial_prompt_str.empty() && initial_prompt_str[0] != ' ') { // Llama 2 often expects leading space for sys prompt
+        // Or handle BOS token explicitly
+        initial_prompt_str = " " + initial_prompt_str;
     }
-    last_n_tokens.resize(n_ctx);
-    fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
-    n_consumed = 0;
-  }
+    
+    std::vector<llama_token> initial_tokens = my_llama_tokenize(
+        this->model, 
+        initial_prompt_str, 
+        true, // Add BOS for the very first prompt
+        true  // Allow special tokens in system prompt
+    );
+
+    current_conversation_tokens = initial_tokens;
+    // last_n_tokens_for_penalty might be initialized here too, or sized to n_ctx and filled with padding.
+
+    // No initial batch creation here; threadRun will handle it.
+    // The old UELlama did a warm-up eval with BOS. This can still be done in threadRun
+    // before the main loop if desired, by creating a batch with BOS and decoding it.
+    UE_LOG(LogTemp, Log, TEXT("Llama activated. Initial prompt tokenized to %d tokens."), current_conversation_tokens.size());
+}
 
   void Llama::unsafeDeactivate()
   {
     UE_LOG(LogTemp, Warning, TEXT("%p Unloading LLM model %p"), this, model);
-    if (!model)
-      return;
-    llama_print_timings(ctx);
+    if (!model) return;
+    llama_sampler_free(sampler_chain_instance);
+    sampler_chain_instance = nullptr;
     llama_free(ctx);
     ctx = nullptr;
-    llama_free_model(model);
+    llama_model_free(model);
     model = nullptr;
   }
 } // namespace Internal
@@ -443,7 +398,9 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer &ObjectInitializer)
 {
   PrimaryComponentTick.bCanEverTick = true;
   PrimaryComponentTick.bStartWithTickEnabled = true;
-  llama->tokenCb = [this](FString NewToken) { OnNewTokenGenerated.Broadcast(std::move(NewToken)); };
+  llama->tokenCb = [this](FString NewToken) {
+	OnNewTokenGenerated.Broadcast(std::move(NewToken));
+  };
 }
 
 ULlamaComponent::~ULlamaComponent() = default;

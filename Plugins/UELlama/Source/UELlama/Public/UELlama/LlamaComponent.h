@@ -50,27 +50,11 @@ namespace
 		return true;
 	}
 
-	vector<llama_token> my_llama_tokenize(llama_context* ctx,
-		const string& text,
-		vector<llama_token>& res,
-		bool add_bos)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Tokenize `%s`"), UTF8_TO_TCHAR(text.c_str()));
-		// initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
-		res.resize(text.size() + (int)add_bos);
-		const int n = llama_tokenize(ctx, text.c_str(), text.length(), res.data(), res.size(), add_bos);
-		res.resize(n);
-
-		return res;
-	}
-
 	constexpr int n_threads = 4;
 
 	struct Params
 	{
-//		FString prompt = "Hello";
 		FString prompt = "You are AIXO, a helpful AI assistant for a submarine captain. You are currently in a test environment.";
-//		FString pathToModel = "/media/mika/Michigan/prj/llama-2-13b-chat.ggmlv3.q8_0.bin";
   		FString pathToModel = "/Users/burt/Documents/Models/llama-2-13b-chat.Q8_0.gguf";
 		TArray<FString> stopSequences;
 	};
@@ -91,16 +75,38 @@ namespace Internal
 		void insertPrompt(FString v);
 		void process();
 
-		function<void(FString)> tokenCb;
+		std::function<void(FString)> tokenCb;					// called to return a string to Unreal main thread
 
 	private:
+		std::atomic<bool> eos_reached = false; // End Of Sequence for current generation
+		std::vector<llama_token> last_n_tokens_for_penalty; // Sized to sampling_params.penalty_last_n or n_ctx
+		std::vector<std::vector<llama_token>> stopSequencesTokens; // Tokenized stop sequences
+
 		llama_model* model = nullptr;
 		llama_context* ctx = nullptr;
+		llama_batch batch;									//+BAS
+		llama_sampler * sampler_chain_instance = nullptr;	//+BAS
+		const llama_vocab * vocab = nullptr;				//+BAS
+		int current_kv_pos = 0;								//+BAS
+
+		std::vector<llama_token> current_conversation_tokens; // Stores ALL tokens of the current conversation (prompt + user + AI)
+		int32_t current_eval_pos = 0; // Tracks how many tokens from current_conversation_tokens have already been evaluated and are in the KV cache.
+
+		std::vector<llama_token> pending_prompt_tokens; // (to store tokens from new prompts)
+		int current_sequence_pos; // (tracks the current position in the overall sequence for the KV cache)
+		std::mutex prompt_mutex; // (to protect access to pending_prompt_tokens)
+		bool new_prompt_ready = false; // (atomic or protected by mutex)
+
+		std::atomic<bool> new_input_flag = false; // Simpler flag
+		std::string new_input_buffer; // Store new FString input here, protected by mutex
+		std::mutex input_mutex;
+
 		Q qMainToThread;
 		Q qThreadToMain;
 		atomic_bool running = true;
 		thread thread;
-		vector<vector<llama_token>> stopSequences;
+//		vector<vector<llama_token>> stopSequences;
+//
 		vector<llama_token> embd_inp;
 		vector<llama_token> embd;
 		vector<llama_token> res;
@@ -113,6 +119,7 @@ namespace Internal
 		void unsafeActivate(bool bReset, Params);
 		void unsafeDeactivate();
 		void unsafeInsertPrompt(FString);
+		bool CheckStopSequences(llama_token current_token);
 	};
 }
 

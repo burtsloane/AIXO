@@ -1,3 +1,0 @@
-[submodule "Plugins/UELlama/Source/UELlama/ThirdParty/llama.cpp"]
-	path = Plugins/UELlama/Source/UELlama/ThirdParty/llama.cpp
-	url = https://github.com/ggerganov/llama.cpp.git

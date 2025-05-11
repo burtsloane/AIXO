@@ -14,7 +14,9 @@
 
 void FUELlamaModule::StartupModule()
 {
-  llama_backend_init(true /*numa*/);
+  llama_backend_init();
+  llama_numa_init(GGML_NUMA_STRATEGY_NUMACTL);
+  ggml_backend_load_all();
   IModuleInterface::StartupModule();
 }
 
