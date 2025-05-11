@@ -163,13 +163,11 @@ public:
 		Position2.X = X-DX;        	Position2.Y -= 30 + GetDY();
 		Position3.X = X-DX;        	Position3.Y += 30 - GetDY();
 		Context.DrawTriangle(Position, Position2, Position3, FLinearColor(0.85f, 0.85f, 1.0f));
-UE_LOG(LogTemp, Warning, TEXT("SS_*TBTPump::RenderUnderlay"));
     }
 
 	virtual void Render(RenderingContext& Context) override
 	{
 		PWRJ_MultiSelectJunction::Render(Context);
-UE_LOG(LogTemp, Warning, TEXT("SS_*TBTPump::Render"));
 		//
         FVector2D Position;
 		FBox2D r;
