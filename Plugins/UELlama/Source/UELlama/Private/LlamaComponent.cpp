@@ -53,7 +53,9 @@ namespace Internal
 
   void Llama::insertPrompt(FString v)
   {
-    qMainToThread.enqueue([this, v = std::move(v)]() mutable { unsafeInsertPrompt(std::move(v)); });
+    qMainToThread.enqueue([this, v = std::move(v)]() mutable {
+    	unsafeInsertPrompt(std::move(v));
+	});
   }
 
 void Llama::unsafeInsertPrompt(FString UserInputFStr) {
@@ -71,7 +73,7 @@ void Llama::unsafeInsertPrompt(FString UserInputFStr) {
         new_input_flag = true;
         eos_reached = false; // New input, so not EOS
     }
-    UE_LOG(LogTemp, Log, TEXT("Llama::unsafeInsertPrompt: Added to input buffer: '%s'"), *UserInputFStr);
+    UE_LOG(LogTemp, Log, TEXT("Llama::unsafeInsertPrompt: '%s'"), *UserInputFStr);
 }
 
 bool Llama::CheckStopSequences(llama_token current_token) {
@@ -100,15 +102,16 @@ bool Llama::CheckStopSequences(llama_token current_token) {
     return false;
 }
 
-  Llama::Llama() : thread([this]() { threadRun(); }) {}
+Llama::Llama() : thread([this]() { threadRun(); }) {}
 
 
 void Llama::threadRun() {
     UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Starting."), this);
     batch = llama_batch_init(512, 0, 1); // Max tokens in one batch, 0 embd, 1 seq_id
                                                     // Size this appropriately (e.g., n_batch from llama.cpp examples)
-
     while (running) {
+		while (qMainToThread.processQ()) {}
+
         if (!ctx || !model || !running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
@@ -213,6 +216,9 @@ void Llama::threadRun() {
 
 			llama_token new_id = llama_sampler_sample(sampler_chain_instance, ctx, batch.n_tokens - 1); // Get final token
 
+//const char* piece_str_debug = llama_vocab_get_text(llama_model_get_vocab(model), new_id);
+//UE_LOG(LogTemp, Warning, TEXT("Generated Token ID: %d, Piece: '%s'"), new_id, UTF8_TO_TCHAR(piece_str_debug ? piece_str_debug : "NULL"));
+
 			llama_sampler_accept(sampler_chain_instance, new_id); // Accept token
 
             if (new_id == llama_vocab_eos(llama_model_get_vocab(model)) || CheckStopSequences(new_id)) { // CheckStopSequences needs new_id too
@@ -222,7 +228,31 @@ void Llama::threadRun() {
                 // Send token to main thread
                 const char* piece_str = llama_vocab_get_text(llama_model_get_vocab(model), new_id);
                 if (piece_str) {
-                    FString token_fstring = UTF8_TO_TCHAR(piece_str);
+
+
+
+
+//    FString HexBytes;
+//    for (int i = 0; piece_str[i] != '\0'; ++i) {
+//        HexBytes += FString::Printf(TEXT("%02X "), (unsigned char)piece_str[i]);
+//    }
+//    UE_LOG(LogTemp, Warning, TEXT("Token ID: %d, Piece: '%s', Bytes: %s"), new_id, UTF8_TO_TCHAR(piece_str), *HexBytes);
+
+
+
+const char* piece_str_raw = llama_vocab_get_text(llama_model_get_vocab(model), new_id);
+std::string piece_std_str = (piece_str_raw ? piece_str_raw : "");
+
+// Check for UTF-8 sequence for Ġ (U+0120) -> C4 A0
+if (piece_std_str.rfind("\xC4\xA0", 0) == 0) { // Efficiently checks if string starts with "\xC4\xA0"
+    piece_std_str.replace(0, 2, " "); // Replace the 2 bytes of Ġ with 1 byte of space
+}
+
+
+
+
+
+                    FString token_fstring = UTF8_TO_TCHAR(piece_std_str.c_str());
                     qThreadToMain.enqueue([token_fstring, this]() mutable {
                         if (tokenCb) tokenCb(std::move(token_fstring));
                     });
@@ -240,7 +270,7 @@ void Llama::threadRun() {
         }
     } // end while(running)
 
-    llama_batch_free(batch);
+//    llama_batch_free(batch);
     unsafeDeactivate();
     UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Stopped."), this);
 }
@@ -313,6 +343,13 @@ void Llama::unsafeActivate(bool bReset, Params params_editor) {
     sparams.no_perf = false;
 	sampler_chain_instance = llama_sampler_chain_init(sparams);
 
+//    llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_top_k(50));
+//    llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_top_p(0.9, 1));
+//    llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_temp (0.8));
+//
+//    // typically, the chain should end with a sampler such as "greedy", "dist" or "mirostat"
+//    // this sampler will be responsible to select the actual token
+//    llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_dist(seed));
     llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_greedy());
 
 /*
@@ -337,20 +374,6 @@ llama_sampler_chain_add(sampler_chain_instance, llama_sampler_init_greedy(ctx));
 // etc.
 // The order matters.
 */
-
-
-//llama_sampler_chain_sample_begin(sampler_chain_instance, ctx, &candidates_p); // Prepare chain
-//
-//// The chain itself now holds the logic for applying all added samplers.
-//// You might not need to call individual llama_sampler_chain_sample_X functions here
-//// if they were configured and added to the chain during init.
-//// The chain applies them in the order they were added.
-//
-//llama_token new_id = llama_sampler_chain_sample_token(sampler_chain_instance, ctx); // Get final token
-//
-//llama_sampler_chain_accept(sampler_chain_instance, ctx, new_id); // Accept token
-//
-//llama_sampler_chain_sample_end(sampler_chain_instance, ctx); // Finalize
     //
 
     current_conversation_tokens.clear();

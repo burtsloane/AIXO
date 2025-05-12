@@ -55,7 +55,7 @@ namespace
 	struct Params
 	{
 		FString prompt = "You are AIXO, a helpful AI assistant for a submarine captain. You are currently in a test environment.";
-  		FString pathToModel = "/Users/burt/Documents/Models/llama-2-13b-chat.Q8_0.gguf";
+  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
 		TArray<FString> stopSequences;
 	};
 } // namespace
@@ -147,8 +147,7 @@ public:
   FString prompt = "Hello";
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  FString pathToModel = "/Users/burt/Documents/Models/llama-2-13b-chat.Q8_0.gguf";
-//  FString pathToModel = "/media/mika/Michigan/prj/llama-2-13b-chat.ggmlv3.q8_0.bin";
+  FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   TArray<FString> stopSequences;
