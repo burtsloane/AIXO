@@ -54,8 +54,11 @@ namespace
 
 	struct Params
 	{
-		FString prompt = "You are AIXO, a helpful AI assistant for a submarine captain. You are currently in a test environment.";
-  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
+		FString prompt = TEXT("You are AIXO.");
+
+//  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
+//  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-4B-Q4_K_M.gguf";
+  		FString pathToModel = "/Users/burt/Documents/Models/Qwen_Qwen3-30B-A3B-Q3_K_S.gguf";
 		TArray<FString> stopSequences;
 	};
 } // namespace
@@ -74,8 +77,11 @@ namespace Internal
 		void deactivate();
 		void insertPrompt(FString v);
 		void process();
+		void RequestFullContextDump();
+		std::string AssembleFullContextForDump();
 
 		std::function<void(FString)> tokenCb;					// called to return a string to Unreal main thread
+	    std::function<void(FString)> fullContextDumpCb; // Callback for sending the dump
 
 	private:
 		std::atomic<bool> eos_reached = false; // End Of Sequence for current generation
@@ -93,7 +99,7 @@ namespace Internal
 		int32_t current_eval_pos = 0; // Tracks how many tokens from current_conversation_tokens have already been evaluated and are in the KV cache.
 
 		std::vector<llama_token> pending_prompt_tokens; // (to store tokens from new prompts)
-		int current_sequence_pos; // (tracks the current position in the overall sequence for the KV cache)
+		int current_sequence_pos = 0; // (tracks the current position in the overall sequence for the KV cache)
 		std::mutex prompt_mutex; // (to protect access to pending_prompt_tokens)
 		bool new_prompt_ready = false; // (atomic or protected by mutex)
 
@@ -105,6 +111,19 @@ namespace Internal
 		Q qThreadToMain;
 		atomic_bool running = true;
 		thread thread;
+
+// ... existing members ...
+		enum class LlamaState { IDLE, PROCESSING_INPUT, GENERATING_RESPONSE };
+		std::atomic<LlamaState> current_ai_state = LlamaState::IDLE;
+		bool initial_context_processed = false; // Tracks if static prefix + initial status is done
+		int32_t N_STATIC_END_POS = 0; // Position after static prefix
+		int32_t N_CONVO_END_POS_BEFORE_STATUS = 0; // Position after conversation, before last status block
+		std::deque<std::vector<llama_token>> conversation_history_turns; // Stores tokenized turns
+		const int MAX_CONVO_HISTORY_TURNS = 20; // Max user/AI turn pairs to keep in active context
+		bool pending_status_update_flag = false; // Set by main thread or system events
+		std::vector<llama_token> current_ai_response_buffer; // Temporarily stores tokens of AI's current response
+		bool is_generating_response_internally = false; // True while AI is outputting tokens for a single turn
+		int32_t kv_pos_before_current_ai_response = 0; // KV pos before AI started its current stream of tokens
 //		vector<vector<llama_token>> stopSequences;
 //
 		vector<llama_token> embd_inp;
@@ -120,11 +139,21 @@ namespace Internal
 		void unsafeDeactivate();
 		void unsafeInsertPrompt(FString);
 		bool CheckStopSequences(llama_token current_token);
+		//
+		std::vector<llama_token> GetCurrentSubmarineStatusTokens();
+		bool ConversationHistoryNeedsPruning();
+		void PruneConversationHistoryAndUpdateContext();
+		void AddToConversationHistoryDeque(const std::string& role, const std::vector<llama_token>& tokens);
+		std::vector<llama_token> GetPrunedConversationTokenVectorFromHistory();
+		void ProcessTokenVectorChunked(const std::vector<llama_token>& tokens_to_process, int32_t start_offset_in_vector, bool last_chunk_gets_logits);
+		void InvalidateKVCacheAndTokensFrom(int32_t position_to_keep_kv_until);
+		void StopSeqHelper(const FString& stopSeqFStr);
 	};
 }
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewTokenGenerated, FString, NewToken);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFullContextDumpReady, const FString&, ContextDump);
 
 UCLASS(Category = "LLM", BlueprintType, meta = (BlueprintSpawnableComponent))
 class UELLAMA_API ULlamaComponent : public UActorComponent
@@ -143,17 +172,29 @@ public:
   UPROPERTY(BlueprintAssignable)
   FOnNewTokenGenerated OnNewTokenGenerated;
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(MultiLine=true))
   FString prompt = "Hello";
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
+//  FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
+//  FString pathToModel = "/Users/burt/Documents/Models/Qwen3-4B-Q4_K_M.gguf";
+  FString pathToModel = "/Users/burt/Documents/Models/Qwen_Qwen3-30B-A3B-Q3_K_S.gguf";
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   TArray<FString> stopSequences;
 
   UFUNCTION(BlueprintCallable)
   void InsertPrompt(const FString &v);
+
+    UFUNCTION(BlueprintCallable, Category = "Llama|Debug")
+    void TriggerFullContextDump();
+
+    UPROPERTY(BlueprintAssignable, Category = "Llama|Debug")
+    FOnFullContextDumpReady OnFullContextDumpReady;
+
+private:
+    // ... std::unique_ptr<Internal::Llama> llama; ...
+    void HandleFullContextDump(FString ContextDump); // New private handler
 
 private:
   std::unique_ptr<Internal::Llama> llama;

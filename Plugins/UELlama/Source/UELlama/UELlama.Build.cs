@@ -41,6 +41,7 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
             PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libggml-cpu.a"));
             PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libggml-base.a"));
             PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libggml-metal.a"));
+            PublicAdditionalLibraries.Add(Path.Combine(LlamaLibDir, "libcommon.a"));
 
     string PluginResourcesPath = Path.Combine(ModuleDirectory, "..", "Resources"); // Goes up one level from Source/UELlama to UELlama-main, then into Resources
     if (Directory.Exists(PluginResourcesPath))
