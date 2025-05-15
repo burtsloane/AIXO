@@ -37,7 +37,6 @@
          n = llama_tokenize(llama_model_get_vocab(model), text.c_str(), static_cast<int>(text.length()), res.data(), static_cast<int>(res.size()), add_bos, special);
      }
      if (n >= 0) {
-// звукоряд
          res.resize(n);
      } else {
          UE_LOG(LogTemp, Error, TEXT("Error tokenizing input in my_llama_tokenize."));
@@ -81,29 +80,20 @@ void Llama::unsafeInsertPrompt(FString UserInputFStr) {
 bool Llama::CheckStopSequences(llama_token current_token) {
     if (stopSequencesTokens.empty()) return false;
 
-    // A temporary buffer that includes the current token with the end of last_n_tokens_for_penalty
-    std::vector<llama_token> current_sequence_tail = last_n_tokens_for_penalty;
-    int32_t	penalty_last_n = 8;		// used to be in sampling_params.penalty_last_n
-    if (!current_sequence_tail.empty() && current_sequence_tail.size() >= penalty_last_n) {
-         current_sequence_tail.erase(current_sequence_tail.begin());
-    }
-    current_sequence_tail.push_back(current_token);
-
-
     for (const auto& stop_seq : stopSequencesTokens) {
         if (stop_seq.empty()) continue;
-        if (current_sequence_tail.size() >= stop_seq.size()) {
-            // Check if the tail of current_sequence_tail matches stop_seq
+		if (current_conversation_tokens.size() >= stop_seq.size()) {
+            // Check if the tail of current_conversation_tokens matches stop_seq
             if (std::equal(stop_seq.begin(), stop_seq.end(),
-                           current_sequence_tail.end() - stop_seq.size())) {
+                           current_conversation_tokens.end() - stop_seq.size())) {
                 // For debugging which stop sequence matched:
-				std::string matched_stop_str;
-				for(llama_token t : stop_seq) {
-					const char* piece = llama_vocab_get_text(llama_model_get_vocab(model), t);
-					if (piece) matched_stop_str += piece;
-				}
-				UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Stop sequence matched: '%s'"), this, UTF8_TO_TCHAR(matched_stop_str.c_str()));
-//                UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Stop sequence matched."), this);
+//				std::string matched_stop_str;
+//				for(llama_token t : stop_seq) {
+//					const char* piece = llama_vocab_get_text(llama_model_get_vocab(model), t);
+//					if (piece) matched_stop_str += piece;
+//				}
+//				UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Stop sequence matched: '%s'"), this, UTF8_TO_TCHAR(matched_stop_str.c_str()));
+                UE_LOG(LogTemp, Log, TEXT("Llama thread %p: Stop sequence matched."), this);
                 return true;
             }
         }
@@ -120,6 +110,9 @@ std::vector<llama_token> Llama::GetCurrentSubmarineStatusTokens() {
     // FString status_FString = OuterLlamaComponent->GetFormattedSubmarineStatus(); // Call a UFUNCTION on ULlamaComponent
     // std::string status_std_str = "SubmarineStatus:\nDepth: 100m\nSpeed: 5kts\nBattery1: 80%\n"; // Example
     // For now, a placeholder:
+// TODO: has to come from the other side, right?
+//  the idea is that for a Captain command, a tool_response or an autonomous system notification, a new submarinestate is sent
+//  problem is: what if the AI was told to watch until we crossed the 48th parallel; this would need to be a tool call?
     std::string status_std_str = "\n[Submarine Status: Depth=" + std::to_string(rand()%200) + "m, Battery=" + std::to_string(rand()%100) + "%]\n";
     return my_llama_tokenize(this->model, status_std_str, false, false);
 }
@@ -138,6 +131,7 @@ bool Llama::ConversationHistoryNeedsPruning() {
 // Prunes conversation_history_turns (deque) and updates current_conversation_tokens and KV cache
 void Llama::PruneConversationHistoryAndUpdateContext() {
     UE_LOG(LogTemp, Warning, TEXT("Pruning conversation history. Current turns: %d"), conversation_history_turns.size());
+// TODO: this should check against a quota
     while (conversation_history_turns.size() > MAX_CONVO_HISTORY_TURNS / 2) { // Keep newest half
         conversation_history_turns.pop_front();
     }
@@ -160,21 +154,9 @@ void Llama::AddToConversationHistoryDeque(const std::string& role, const std::ve
     // This example just adds the tokens. You'll need to prepend role tokens when rebuilding the flat vector.
     conversation_history_turns.push_back(tokens);
     if (conversation_history_turns.size() > MAX_CONVO_HISTORY_TURNS * 2) { // Keep a bit more than strictly needed for pruning
+// TODO: conversation turns should not be thrown away
         conversation_history_turns.pop_front();
     }
-}
-
-// Gets a flat vector of tokens from the pruned conversation_history_turns (deque)
-std::vector<llama_token> Llama::GetPrunedConversationTokenVectorFromHistory() {
-    std::vector<llama_token> flat_convo;
-    // This needs to correctly prepend role tokens like "Captain: ", "AIXO_CAP: "
-    // based on your chat template.
-    for (const auto& turn_tokens : conversation_history_turns) {
-        // Example: if (role == "user") flat_convo.insert(flat_convo.end(), user_prefix_tokens.begin(), user_prefix_tokens.end());
-        flat_convo.insert(flat_convo.end(), turn_tokens.begin(), turn_tokens.end());
-        // flat_convo.push_back(llama_token_nl(model)); // Add newlines between turns
-    }
-    return flat_convo;
 }
 
 // Helper to process a vector of tokens in chunks
@@ -273,6 +255,7 @@ void Llama::threadRun() {
             ProcessTokenVectorChunked(current_conversation_tokens, 0, false); // Decode static, no logits needed at end of this
             N_CONVO_END_POS_BEFORE_STATUS = current_sequence_pos; // After static, before first status
 
+            // copy status report onto active context
             std::vector<llama_token> initial_status_tokens = GetCurrentSubmarineStatusTokens();
             current_conversation_tokens.insert(current_conversation_tokens.end(), initial_status_tokens.begin(), initial_status_tokens.end());
             ProcessTokenVectorChunked(current_conversation_tokens, N_CONVO_END_POS_BEFORE_STATUS, true); // Decode status, logits for last token
@@ -345,7 +328,6 @@ void Llama::threadRun() {
             }
         }
 
-
         // --- AI Token Generation ---
         if (current_ai_state == LlamaState::GENERATING_RESPONSE && is_generating_response_internally && !eos_reached.load()) {
             if (current_eval_pos != current_sequence_pos || current_eval_pos != current_conversation_tokens.size()) {
@@ -377,7 +359,7 @@ void Llama::threadRun() {
                 UE_LOG(LogTemp, Log, TEXT("AI Turn Ended (EOS/Stop). State: IDLE."), this);
                 eos_reached = true;
                 is_generating_response_internally = false;
-                // AddToConversationHistoryDeque("assistant", current_ai_response_buffer); // Add completed response
+                AddToConversationHistoryDeque("assistant", current_ai_response_buffer); // Add completed response
                 current_ai_response_buffer.clear();
                 current_ai_state = LlamaState::IDLE; // Ready for new input or status update
                 // The next time input comes or status updates, KV will be rolled back to N_CONVO_END_POS_BEFORE_STATUS,
@@ -722,9 +704,10 @@ void Llama::unsafeActivate(bool bReset, Params params_editor) {
 	StopSeqHelper(TEXT("<|im_end|>"));
 	StopSeqHelper(TEXT("<|endoftext|>"));
 	StopSeqHelper(TEXT("~~~END_AIXO_TURN~~~"));
+	StopSeqHelper(TEXT("~~~END_AIXO_TURN~~"));		// Qwen3 doesn't seem to generate the last '~'
 	StopSeqHelper(TEXT("Captain: "));
 
-    //
+    // init the conversation
 
     current_conversation_tokens.clear();
     current_eval_pos = 0;
@@ -732,10 +715,15 @@ void Llama::unsafeActivate(bool bReset, Params params_editor) {
 
     // Tokenize initial prompt
     std::string initial_prompt_str = TCHAR_TO_UTF8(*params_editor.prompt);
+
+	// add more to the static context: grid topo, junction notes, other fixed blocks of info
+   
     if (!initial_prompt_str.empty() && initial_prompt_str[0] != ' ') { // Llama 2 often expects leading space for sys prompt
         // Or handle BOS token explicitly
         initial_prompt_str = " " + initial_prompt_str;
     }
+    
+    // tokenize the initial prompt
     
     std::vector<llama_token> initial_tokens = my_llama_tokenize(
         this->model, 
@@ -782,7 +770,8 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer &ObjectInitializer)
         // This lambda will be called from the llama thread via qThreadToMain.
         // We need to marshal the call to OnFullContextDumpReady to the game thread.
         AsyncTask(ENamedThreads::GameThread, [this, ContextDump]() {
-            HandleFullContextDump(ContextDump);
+			OnFullContextDumpReady.Broadcast(ContextDump);
+			UE_LOG(LogTemp, Log, TEXT("Full Context Dump Requested and Ready (length: %d)"), ContextDump.Len());
         });
     };
 }
@@ -792,14 +781,6 @@ void ULlamaComponent::TriggerFullContextDump()
     if (llama) {
         llama->RequestFullContextDump();
     }
-}
-
-void ULlamaComponent::HandleFullContextDump(FString ContextDump)
-{
-    // This is now running on the Game Thread
-    OnFullContextDumpReady.Broadcast(ContextDump);
-    UE_LOG(LogTemp, Log, TEXT("Full Context Dump Requested and Ready (length: %d)"), ContextDump.Len());
-    // You could also directly print it to a UMG text box here if you have a reference.
 }
 
 
@@ -812,6 +793,7 @@ void ULlamaComponent::Activate(bool bReset)
   params.pathToModel = pathToModel;
   params.prompt = prompt;
   params.stopSequences = stopSequences;
+  // install more for the static context
   llama->activate(bReset, std::move(params));
 }
 

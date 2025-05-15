@@ -54,11 +54,11 @@ namespace
 
 	struct Params
 	{
-		FString prompt = TEXT("You are AIXO.");
+		FString prompt;// = TEXT("You are AIXO.");
 
 //  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
 //  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-4B-Q4_K_M.gguf";
-  		FString pathToModel = "/Users/burt/Documents/Models/Qwen_Qwen3-30B-A3B-Q3_K_S.gguf";
+  		FString pathToModel;// = "/Users/burt/Documents/Models/Qwen_Qwen3-30B-A3B-Q3_K_S.gguf";
 		TArray<FString> stopSequences;
 	};
 } // namespace
@@ -100,7 +100,6 @@ namespace Internal
 
 		std::vector<llama_token> pending_prompt_tokens; // (to store tokens from new prompts)
 		int current_sequence_pos = 0; // (tracks the current position in the overall sequence for the KV cache)
-		std::mutex prompt_mutex; // (to protect access to pending_prompt_tokens)
 		bool new_prompt_ready = false; // (atomic or protected by mutex)
 
 		std::atomic<bool> new_input_flag = false; // Simpler flag
@@ -112,7 +111,6 @@ namespace Internal
 		atomic_bool running = true;
 		thread thread;
 
-// ... existing members ...
 		enum class LlamaState { IDLE, PROCESSING_INPUT, GENERATING_RESPONSE };
 		std::atomic<LlamaState> current_ai_state = LlamaState::IDLE;
 		bool initial_context_processed = false; // Tracks if static prefix + initial status is done
@@ -124,15 +122,6 @@ namespace Internal
 		std::vector<llama_token> current_ai_response_buffer; // Temporarily stores tokens of AI's current response
 		bool is_generating_response_internally = false; // True while AI is outputting tokens for a single turn
 		int32_t kv_pos_before_current_ai_response = 0; // KV pos before AI started its current stream of tokens
-//		vector<vector<llama_token>> stopSequences;
-//
-		vector<llama_token> embd_inp;
-		vector<llama_token> embd;
-		vector<llama_token> res;
-		int n_past = 0;
-		vector<llama_token> last_n_tokens;
-		int n_consumed = 0;
-		bool eos = false;
 
 		void threadRun();
 		void unsafeActivate(bool bReset, Params);
@@ -144,7 +133,7 @@ namespace Internal
 		bool ConversationHistoryNeedsPruning();
 		void PruneConversationHistoryAndUpdateContext();
 		void AddToConversationHistoryDeque(const std::string& role, const std::vector<llama_token>& tokens);
-		std::vector<llama_token> GetPrunedConversationTokenVectorFromHistory();
+//		std::vector<llama_token> GetPrunedConversationTokenVectorFromHistory();
 		void ProcessTokenVectorChunked(const std::vector<llama_token>& tokens_to_process, int32_t start_offset_in_vector, bool last_chunk_gets_logits);
 		void InvalidateKVCacheAndTokensFrom(int32_t position_to_keep_kv_until);
 		void StopSeqHelper(const FString& stopSeqFStr);
@@ -191,10 +180,6 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Llama|Debug")
     FOnFullContextDumpReady OnFullContextDumpReady;
-
-private:
-    // ... std::unique_ptr<Internal::Llama> llama; ...
-    void HandleFullContextDump(FString ContextDump); // New private handler
 
 private:
   std::unique_ptr<Internal::Llama> llama;

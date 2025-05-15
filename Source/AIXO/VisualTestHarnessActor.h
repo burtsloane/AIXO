@@ -99,8 +99,6 @@ protected:
     TMap<FString, float> GridMarkerDefinitions;
 
     // Arrays/Map to hold the grid loaded from JSON
-    TArray<ICH_PowerJunction*> LoadedJunctions;
-    TArray<PWR_PowerSegment*> LoadedSegments;
     TMap<FString, ICH_PowerJunction*> JunctionMap;
 
 	// Input Handling
