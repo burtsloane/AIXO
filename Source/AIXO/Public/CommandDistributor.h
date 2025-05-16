@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-//#include "PWR_PowerSegment.h"
 #include "ICommandHandler.h"
 
 class PWR_PowerSegment;

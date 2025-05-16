@@ -19,6 +19,7 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
         PrivateDependencyModuleNames.AddRange(new string[] {
             // "Slate", "SlateCore", // Add if your plugin uses Slate UI directly
         });
+		PrivateDependencyModuleNames.AddRange(new string[] { "AIXO" /* Add your game module name here */ });
 
         // Define the base path to your ThirdParty llama.cpp directory
         string ThirdPartyPath = Path.Combine(ModuleDirectory, "ThirdParty");

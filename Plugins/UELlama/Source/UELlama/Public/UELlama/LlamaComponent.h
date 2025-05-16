@@ -1,6 +1,6 @@
 // 2023 (c) Mika Pi
-
 #pragma once
+
 #include <Components/ActorComponent.h>
 #include <CoreMinimal.h>
 #include <memory>
@@ -11,11 +11,11 @@
 #include <mutex>
 #include "llama.h"
 
+#include "VisualTestHarnessActor.h"
+
 #include "LlamaComponent.generated.h"
 
 using namespace std;
-
-
 
 namespace
 {
@@ -59,128 +59,164 @@ namespace
 //  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
 //  		FString pathToModel = "/Users/burt/Documents/Models/Qwen3-4B-Q4_K_M.gguf";
   		FString pathToModel;// = "/Users/burt/Documents/Models/Qwen_Qwen3-30B-A3B-Q3_K_S.gguf";
-		TArray<FString> stopSequences;
+		std::vector<FString> stopSequences;
 	};
 } // namespace
 
 
+// Enum for context block types
+UENUM(BlueprintType)
+enum class ELlamaContextBlockType : uint8
+{
+    SystemPrompt,        // Overall instructions, personality, tool definitions
+    StaticWorldInfo,     // Grid topology, GetSystemInfo() notes, SOPs
+    LowFrequencyState,   // Geopolitical updates, mission phase (changes rarely)
+    // ConversationHistory is managed internally by ProcessInputAndGenerate
+    // HighFrequencyState is passed directly with ProcessInputAndGenerate
+    // UserInput and ToolResponse are also part of ProcessInputAndGenerate
+    COUNT UMETA(Hidden) // For iterating if needed
+};
 
 namespace Internal
 {
-	class Llama
-	{
-	public:
-		Llama();
-		~Llama();
+    class Llama
+    {
+    public:
+        Llama();
+        ~Llama();
 
-		void activate(bool bReset, Params);
-		void deactivate();
-		void insertPrompt(FString v);
-		void process();
-		void RequestFullContextDump();
+        // MODIFIED/NEW API for Llama thread
+        void InitializeLlama_LlamaThread(const FString& ModelPath, const FString& InitialSystemPrompt /*, other params */);
+        void ShutdownLlama_LlamaThread();
+        void UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockType, const FString& NewTextContent);
+        void ProcessInputAndGenerate_LlamaThread(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
+        void RequestFullContextDump_LlamaThread(); // Renamed for clarity
 		std::string AssembleFullContextForDump();
+		void DetokenizeAndAppend(std::string& TargetString, const std::vector<llama_token>& TokensToDetokenize, const llama_model* ModelHandle);
+		std::string CleanString(std::string p_str);
 
-		std::function<void(FString)> tokenCb;					// called to return a string to Unreal main thread
-	    std::function<void(FString)> fullContextDumpCb; // Callback for sending the dump
+        std::function<void(FString)> tokenCb;
+        std::function<void(FString)> fullContextDumpCb;
+        std::function<void(FString)> toolCallCb; // NEW: For tool calls
+        std::function<void(FString)> errorCb;    // NEW: For errors
 
-	private:
-		std::atomic<bool> eos_reached = false; // End Of Sequence for current generation
-		std::vector<llama_token> last_n_tokens_for_penalty; // Sized to sampling_params.penalty_last_n or n_ctx
-		std::vector<std::vector<llama_token>> stopSequencesTokens; // Tokenized stop sequences
+    private:
+        // --- Core Llama State ---
+        llama_model* model = nullptr;
+        llama_context* ctx = nullptr;
+        llama_batch batch;
+		int32_t batch_capacity; // store the capacity
+        llama_sampler* sampler_chain_instance = nullptr;
+        const llama_vocab* vocab = nullptr;
+        int32_t n_ctx_from_model = 0; // Actual context window size
 
-		llama_model* model = nullptr;
-		llama_context* ctx = nullptr;
-		llama_batch batch;									//+BAS
-		llama_sampler * sampler_chain_instance = nullptr;	//+BAS
-		const llama_vocab * vocab = nullptr;				//+BAS
-		int current_kv_pos = 0;								//+BAS
+        // --- Context Block Management (Llama Thread Owned) ---
+        struct FTokenizedContextBlock {
+            std::vector<llama_token> Tokens;
+            // FString OriginalText; // Optional: for debugging or re-tokenizing if vocab changes (rare)
+        };
+        TMap<ELlamaContextBlockType, FTokenizedContextBlock> FixedContextBlocks;
+        std::vector<llama_token> ConversationHistoryTokens; // Single flat list of tokens for conversation
+        std::vector<llama_token> CurrentHighFrequencyStateTokens; // Tokens for the HFS of the *current* turn
 
-		std::vector<llama_token> current_conversation_tokens; // Stores ALL tokens of the current conversation (prompt + user + AI)
-		int32_t current_eval_pos = 0; // Tracks how many tokens from current_conversation_tokens have already been evaluated and are in the KV cache.
+        int32_t kv_cache_token_cursor = 0; // Tracks how many tokens are currently valid in the KV cache from the start of the logical sequence.
+                                           // This is our primary way to manage n_past effectively.
 
-		std::vector<llama_token> pending_prompt_tokens; // (to store tokens from new prompts)
-		int current_sequence_pos = 0; // (tracks the current position in the overall sequence for the KV cache)
-		bool new_prompt_ready = false; // (atomic or protected by mutex)
+        // --- Conversation History Management ---
+        struct FConversationTurn {
+            FString Role; // e.g., "user", "assistant", "tool_response"
+            std::vector<llama_token> Tokens;
+        };
+        std::deque<FConversationTurn> StructuredConversationHistory; // For logical turn management
+        const int32 MAX_CONVERSATION_TOKENS_TARGET = 16384; // Target, will try to stay below this. Adjust based on n_ctx and fixed blocks.
+                                                           // Example: if n_ctx=32k, fixed=4k, HFS=1k, AI response buffer=1k, then convo can be ~26k
+                                                           // This should be calculated dynamically based on n_ctx and other blocks.
 
-		std::atomic<bool> new_input_flag = false; // Simpler flag
-		std::string new_input_buffer; // Store new FString input here, protected by mutex
-		std::mutex input_mutex;
+        // --- Generation State ---
+        std::atomic<bool> eos_reached = false;
+        std::vector<std::vector<llama_token>> stopSequencesTokens;
+        std::atomic<bool> bIsGenerating = false; // True while actively sampling tokens
 
-		Q qMainToThread;
-		Q qThreadToMain;
-		atomic_bool running = true;
-		thread thread;
+        // --- Threading & Queues ---
+public:
+        Q qMainToLlama; // Renamed for clarity
+        Q qLlamaToMain; // Renamed for clarity
+        std::atomic<bool> bIsRunning = true; // Renamed for clarity
+private:
+        std::thread ThreadHandle; // Renamed for clarity
 
-		enum class LlamaState { IDLE, PROCESSING_INPUT, GENERATING_RESPONSE };
-		std::atomic<LlamaState> current_ai_state = LlamaState::IDLE;
-		bool initial_context_processed = false; // Tracks if static prefix + initial status is done
-		int32_t N_STATIC_END_POS = 0; // Position after static prefix
-		int32_t N_CONVO_END_POS_BEFORE_STATUS = 0; // Position after conversation, before last status block
-		std::deque<std::vector<llama_token>> conversation_history_turns; // Stores tokenized turns
-		const int MAX_CONVO_HISTORY_TURNS = 20; // Max user/AI turn pairs to keep in active context
-		bool pending_status_update_flag = false; // Set by main thread or system events
-		std::vector<llama_token> current_ai_response_buffer; // Temporarily stores tokens of AI's current response
-		bool is_generating_response_internally = false; // True while AI is outputting tokens for a single turn
-		int32_t kv_pos_before_current_ai_response = 0; // KV pos before AI started its current stream of tokens
+        // --- Helper Methods (Llama Thread) ---
+        void ThreadRun_LlamaThread(); // Renamed for clarity
+        void TokenizeAndStoreFixedBlock(ELlamaContextBlockType BlockType, const FString& Text, bool bIsSystemPrompt);
+        void AssembleFullPromptForTurn(const std::vector<llama_token>& NewInputTokens, std::vector<llama_token>& OutFullPromptTokens);
+        void DecodeTokensAndSample(std::vector<llama_token>& TokensToDecode, bool bIsFinalPromptTokenLogits);
+        void AppendTurnToStructuredHistory(const FString& Role, const std::vector<llama_token>& Tokens);
+        void PruneConversationHistory(); // Manages StructuredConversationHistory and ConversationHistoryTokens
+        bool CheckStopSequences();
+        std::string AssembleFullContextForDump_LlamaThread(); // Renamed
+        void StopSeqHelper(const FString& stopSeqFStr);
+        void InvalidateKVCacheFromPosition(int32_t ValidTokenCount);
 
-		void threadRun();
-		void unsafeActivate(bool bReset, Params);
-		void unsafeDeactivate();
-		void unsafeInsertPrompt(FString);
-		bool CheckStopSequences(llama_token current_token);
-		//
-		std::vector<llama_token> GetCurrentSubmarineStatusTokens();
-		bool ConversationHistoryNeedsPruning();
-		void PruneConversationHistoryAndUpdateContext();
-		void AddToConversationHistoryDeque(const std::string& role, const std::vector<llama_token>& tokens);
-//		std::vector<llama_token> GetPrunedConversationTokenVectorFromHistory();
-		void ProcessTokenVectorChunked(const std::vector<llama_token>& tokens_to_process, int32_t start_offset_in_vector, bool last_chunk_gets_logits);
-		void InvalidateKVCacheAndTokensFrom(int32_t position_to_keep_kv_until);
-		void StopSeqHelper(const FString& stopSeqFStr);
-	};
-}
+        // Temporary buffer for tokens generated in the current AI response
+        std::vector<llama_token> CurrentTurnAIReplyTokens;
+    };
+} // namespace Internal
 
 
+// Delegates
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewTokenGenerated, FString, NewToken);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFullContextDumpReady, const FString&, ContextDump);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnToolCallDetected, const FString&, ToolCallJson);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaErrorOccurred, const FString&, ErrorMessage);
+
 
 UCLASS(Category = "LLM", BlueprintType, meta = (BlueprintSpawnableComponent))
 class UELLAMA_API ULlamaComponent : public UActorComponent
 {
-  GENERATED_BODY()
+    GENERATED_BODY()
 public:
-  ULlamaComponent(const FObjectInitializer &ObjectInitializer);
-  ~ULlamaComponent();
+    ULlamaComponent(const FObjectInitializer& ObjectInitializer);
+    ~ULlamaComponent();
 
-  virtual void Activate(bool bReset) override;
-  virtual void Deactivate() override;
-  virtual void TickComponent(float DeltaTime,
-                             ELevelTick TickType,
-                             FActorComponentTickFunction* ThisTickFunction) override;
+    virtual void BeginPlay() override; // Changed from Activate for standard UE lifecycle
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Changed from Deactivate
+    virtual void TickComponent(float DeltaTime,
+                               ELevelTick TickType,
+                               FActorComponentTickFunction* ThisTickFunction) override;
 
-  UPROPERTY(BlueprintAssignable)
-  FOnNewTokenGenerated OnNewTokenGenerated;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(MultiLine=true))
-  FString prompt = "Hello";
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
-//  FString pathToModel = "/Users/burt/Documents/Models/Qwen3-14B-Q4_K_M.gguf";
-//  FString pathToModel = "/Users/burt/Documents/Models/Qwen3-4B-Q4_K_M.gguf";
-  FString pathToModel = "/Users/burt/Documents/Models/Qwen_Qwen3-30B-A3B-Q3_K_S.gguf";
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  TArray<FString> stopSequences;
-
-  UFUNCTION(BlueprintCallable)
-  void InsertPrompt(const FString &v);
-
-    UFUNCTION(BlueprintCallable, Category = "Llama|Debug")
-    void TriggerFullContextDump();
+    UPROPERTY(BlueprintAssignable)
+    FOnNewTokenGenerated OnNewTokenGenerated;
 
     UPROPERTY(BlueprintAssignable, Category = "Llama|Debug")
     FOnFullContextDumpReady OnFullContextDumpReady;
 
+    // NEW Delegates
+    UPROPERTY(BlueprintAssignable, Category = "Llama")
+    FOnToolCallDetected OnToolCallDetected;
+
+    UPROPERTY(BlueprintAssignable, Category = "Llama")
+    FOnLlamaErrorOccurred OnLlamaErrorOccurred;
+
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
+    FString PathToModel; // Renamed from pathToModel
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
+    FString SystemPromptText; // Renamed from prompt
+
+    // UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Llama|Config")
+    // std::vector<FString> StopSequences; // Renamed from stopSequences - this will be handled by system prompt now
+
+    // --- NEW API ---
+    UFUNCTION(BlueprintCallable, Category = "Llama")
+    void UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent);
+
+    UFUNCTION(BlueprintCallable, Category = "Llama")
+    void ProcessInput(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
+
+    UFUNCTION(BlueprintCallable, Category = "Llama|Debug")
+    void TriggerFullContextDump();
+
 private:
-  std::unique_ptr<Internal::Llama> llama;
+    std::unique_ptr<Internal::Llama> LlamaInternal; // Renamed from llama
 };

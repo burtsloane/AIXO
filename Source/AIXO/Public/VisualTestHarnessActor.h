@@ -46,13 +46,15 @@ public:
 	TSharedPtr<SSubDiagram> DiagramSlate;            // Slate widget instance
 	TObjectPtr<UNativeWidgetHost> SubDiagramHost;    // BP host (UWidget)
 
-protected:
-    // UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Submarine")
-    // TObjectPtr<ASubmarineState> SubmarineState; 
+	// Core systems
+    CommandDistributor CmdDistributor; // Manages command handlers
+	TUniquePtr<VisualizationManager> VizManager; // Manages visual elements
+    TUniquePtr<UnrealRenderingContext> RenderContext; // Handles drawing
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Submarine")
     TObjectPtr<ASubmarineState> SubmarineState; 
 
+protected:
 	// UMG Widget references
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
 	TSubclassOf<UUserWidget> TestHarnessWidgetClass;
@@ -83,11 +85,6 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
     FVector2D VisTextureSize = FVector2D(1024, 1024); // Default size
-
-	// Core systems
-    CommandDistributor CmdDistributor; // Manages command handlers
-	TUniquePtr<VisualizationManager> VizManager; // Manages visual elements
-    TUniquePtr<UnrealRenderingContext> RenderContext; // Handles drawing
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visualization")
     TObjectPtr<UTextureRenderTarget2D> VisRenderTarget;
