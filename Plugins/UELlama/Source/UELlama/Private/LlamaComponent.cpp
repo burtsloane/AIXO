@@ -439,6 +439,12 @@ namespace Internal
 				const char* piece = llama_vocab_get_text(vocab, tk);
 				if(piece) RawAIOutputThisTurnStr += UTF8_TO_TCHAR(piece);
 			}
+			{
+				std::string sss = TCHAR_TO_UTF8(*RawAIOutputThisTurnStr);
+				sss = CleanString(sss);
+				FString fs = UTF8_TO_TCHAR(sss.c_str());
+				RawAIOutputThisTurnStr = fs;
+			}
 
 			// Trim at ~~~END_AIXO_TURN~~~ if it's present, as that's our logical end.
 			// The model might try to generate <|im_end|> after it, which we don't want in the stored content.

@@ -156,6 +156,20 @@ public:
     virtual TArray<FString> GetAvailableQueries() const = 0;
 
     /**
+     * Retrieves the value of system guidance
+     * @return The string representation of the guidance
+	 * This does not change - hard info about how to use a system
+     */
+    virtual FString GetSystemGuidance() const { return ""; }
+
+    /**
+     * Retrieves the value of system status
+     * @return The string representation of the status
+	 * This changes occasionally, includes things like projected time to 100% charge
+     */
+    virtual FString GetSystemStatus() const { return ""; }
+
+    /**
      * Adds a message or error to the notification queue.
      * @param Message The message or error to be added.
      */
