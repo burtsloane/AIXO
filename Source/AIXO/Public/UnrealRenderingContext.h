@@ -21,7 +21,7 @@ FORCEINLINE static FColor To8bit(const FLinearColor& L)
  * Unreal Engine specific implementation of RenderingContext.
  * Uses UCanvas drawing functions targeting a UTextureRenderTarget2D.
  */
-class UnrealRenderingContext : public RenderingContext
+class AIXO_API UnrealRenderingContext : public RenderingContext
 {
 private:
     UTextureRenderTarget2D* RenderTarget = nullptr;
@@ -30,7 +30,7 @@ private:
     FDrawToRenderTargetContext RenderTargetContext;
     UWorld* World = nullptr; // Needed for drawing functions
     UTexture2D* SolidColorTexture = nullptr; // Store the texture to use for solid colors
-    int32 VertexCount;
+    int32 VertexCount = 0;
 
     /** Dynamic geometry recorded this frame (CPU‑side) */
     // Removed local FDiagramVertex struct
@@ -39,6 +39,10 @@ private:
     TArray<uint32>         WorkingIndices;
     TArray<FDiagramVertex> PresentedVertices;
     TArray<uint32>         PresentedIndices;
+
+    // Transform stack support
+    TArray<FTransform2D> TransformStack;
+    FTransform2D CurrentTransform;
 
     void        ClearBuffers();
 	uint32 PushVertex(const FVector2D& Pos,
@@ -79,4 +83,9 @@ public:
     /** Read‑only access for UI widgets */
 	const TArray<FDiagramVertex>* GetPresentedVertices() const { return &PresentedVertices; }
 	const TArray<uint32>*         GetPresentedIndices()  const { return &PresentedIndices; }
+
+    // Transform stack support
+    void PushTransform(const FTransform2D& Transform);
+    void PopTransform();
+    FTransform2D GetCurrentTransform() const { return TransformStack.Last(); }
 }; 

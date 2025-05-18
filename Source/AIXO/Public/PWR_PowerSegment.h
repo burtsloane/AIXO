@@ -1,11 +1,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "ICH_PowerJunction.h"
 #include "SubmarineState.h"
 #include "ICommandHandler.h"
 #include "IVisualElement.h"
 #include "Engine/EngineTypes.h"
+
+// Forward declarations
+class ICH_PowerJunction;
+class CommandDistributor;
 
 /**
  * Power segment status enumeration
@@ -63,6 +66,9 @@ public:
     const FString& GetName() const { return SystemName; }
 
     virtual bool HandleTouchEvent(const TouchEvent& Event, CommandDistributor* Distributor);
+
+    // Hit testing - implementation moved to cpp file
+    bool IsPointNear(const FVector2D& Point) const;
 
     friend class PWR_PowerPropagation;
     friend class VisualizationManager;

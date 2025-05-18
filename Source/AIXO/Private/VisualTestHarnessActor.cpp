@@ -91,7 +91,7 @@ AVisualTestHarnessActor::AVisualTestHarnessActor()
     static ConstructorHelpers::FObjectFinder<UTexture2D> WhiteTexFinder(TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
     if (WhiteTexFinder.Succeeded())
     {
-        WhiteSquareTexture = WhiteTexFinder.Object;
+        SolidColorTexture = WhiteTexFinder.Object;
     }
     else
     {
@@ -121,6 +121,25 @@ void AVisualTestHarnessActor::BeginPlay()
     InputModeData.SetHideCursorDuringCapture(false);
     PC->SetInputMode(InputModeData);
     PC->bShowMouseCursor = true;
+
+    // Set up enhanced input
+    if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(InputComponent))
+    {
+        if (ZoomInAction)
+        {
+            EnhancedInputComponent->BindAction(ZoomInAction, ETriggerEvent::Triggered, this, &AVisualTestHarnessActor::OnZoomInTriggered);
+        }
+        if (ZoomOutAction)
+        {
+            EnhancedInputComponent->BindAction(ZoomOutAction, ETriggerEvent::Triggered, this, &AVisualTestHarnessActor::OnZoomOutTriggered);
+        }
+        if (PanAction)
+        {
+            EnhancedInputComponent->BindAction(PanAction, ETriggerEvent::Started, this, &AVisualTestHarnessActor::OnPanStarted);
+            EnhancedInputComponent->BindAction(PanAction, ETriggerEvent::Triggered, this, &AVisualTestHarnessActor::OnPanTriggered);
+            EnhancedInputComponent->BindAction(PanAction, ETriggerEvent::Completed, this, &AVisualTestHarnessActor::OnPanCompleted);
+        }
+    }
 
     CreateWidgetAndGetReferences();
 
@@ -216,7 +235,6 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
     {
 		PWR_PowerPropagation::PropagatePower(VizManager->Segments, VizManager->Junctions);
 
-        // Add Log: Confirm Tick update
         if (RenderContext->BeginDrawing()) 
         {
         	// fill with white
@@ -228,7 +246,12 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 			r.Max.Y = VisTextureSize.Y;
 			RenderContext->DrawRectangle(r, FLinearColor::White, true);
 
+            // Apply view transform
+            RenderContext->PushTransform(FTransform2D(ViewScale, ViewOffset));
+            
             VizManager->Render(*RenderContext);
+
+            RenderContext->PopTransform();
 
             RenderContext->EndDrawing(); 
 
@@ -294,17 +317,17 @@ void AVisualTestHarnessActor::InitializeVisualization()
         UE_LOG(LogTemp, Warning, TEXT("InitializeVisualization: VisualizationImage is null!"));
     }
 
-    // Add Log: Check WhiteSquareTexture validity
-    if (!WhiteSquareTexture)
+    // Add Log: Check SolidColorTexture validity
+    if (!SolidColorTexture)
     {
-        UE_LOG(LogTemp, Error, TEXT("InitializeVisualization: WhiteSquareTexture is NOT valid!"));
+        UE_LOG(LogTemp, Error, TEXT("InitializeVisualization: SolidColorTexture is NOT valid!"));
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: WhiteSquareTexture is valid."));
+        UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: SolidColorTexture is valid."));
     }
 
-    RenderContext = MakeUnique<UnrealRenderingContext>(GetWorld(), VisRenderTarget.Get(), WhiteSquareTexture.Get());
+    RenderContext = MakeUnique<UnrealRenderingContext>(GetWorld(), VisRenderTarget.Get(), SolidColorTexture.Get());
     UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: RenderContext created."));
 
 	if (SubDiagramHost && RenderContext)
@@ -416,6 +439,22 @@ void AVisualTestHarnessActor::CreateWidgetAndGetReferences()
 
     if (!SubDiagramHost)
         UE_LOG(LogTemp, Error, TEXT("SubDiagramHost not found"));
+
+    // Get references to zoom buttons
+    if (TestHarnessWidgetInstance)
+    {
+        ZoomInButton = Cast<UButton>(TestHarnessWidgetInstance->GetWidgetFromName(TEXT("ZoomInButton")));
+        ZoomOutButton = Cast<UButton>(TestHarnessWidgetInstance->GetWidgetFromName(TEXT("ZoomOutButton")));
+
+        if (ZoomInButton)
+        {
+            ZoomInButton->OnClicked.AddDynamic(this, &AVisualTestHarnessActor::OnZoomInButtonClicked);
+        }
+        if (ZoomOutButton)
+        {
+            ZoomOutButton->OnClicked.AddDynamic(this, &AVisualTestHarnessActor::OnZoomOutButtonClicked);
+        }
+    }
 }
 
 void AVisualTestHarnessActor::UpdateStateDisplay()
@@ -445,114 +484,156 @@ void AVisualTestHarnessActor::AddLogMessage(const FString& Message)
 
 void AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, int32 TouchType, int32 PointerIndex)
 {
-	TouchEvent Evt;
-	Evt.Type = (TouchEvent::EType)TouchType;
-	Evt.Position = WidgetPosition;
-	Evt.TouchID = PointerIndex; 
+    // Convert screen position to world space
+    FVector2D WorldPosition = (WidgetPosition - ViewOffset) / ViewScale;
 
-	FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
-	FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(WidgetPosition);
-//	UE_LOG(LogTemp, Warning, TEXT("HandleMouseTap: %f, %f type: %d index: %d"), Evt.Position.X, Evt.Position.Y, TouchType, PointerIndex);
-//	UE_LOG(LogTemp, Warning, TEXT("HandleMouseTap: Widget position: %f, %f"), WidgetPosition.X, WidgetPosition.Y);
-//	UE_LOG(LogTemp, Warning, TEXT("              : Local position: %f, %f"), LocalPosition.X, LocalPosition.Y);
-//	UE_LOG(LogTemp, Warning, TEXT("              : VisTextureSize: %f, %f"), VisTextureSize.X, VisTextureSize.Y);
-//	UE_LOG(LogTemp, Warning, TEXT("              : ImageGeometry.GetLocalSize(): %f, %f"), ImageGeometry.GetLocalSize().X, ImageGeometry.GetLocalSize().Y);
-//	UE_LOG(LogTemp, Warning, TEXT("              : ImageGeometry.GetAbsoluteSize(): %f, %f"), ImageGeometry.GetAbsoluteSize().X, ImageGeometry.GetAbsoluteSize().Y);
-	Evt.Position.X = VisTextureSize.X * WidgetPosition.X / ImageGeometry.GetLocalSize().X;
-	Evt.Position.Y = VisTextureSize.Y * WidgetPosition.Y / ImageGeometry.GetLocalSize().Y;
-//LogTemp: Warning: HandleMouseTap: Widget position: 80.791931, 108.147644
-//LogTemp: Warning:               : Local position: -684.031738, -137.602097
-//LogTemp: Warning:               : VisTextureSize: 512.000000, 512.000000
-//LogTemp: Warning:               : ImageGeometry.GetLocalSize(): 576.000000, 576.000000
-//LogTemp: Warning:               : ImageGeometry.GetAbsoluteSize(): 953.599976, 953.599976
-//LogTemp: Warning:               : Final position: 80.791931, 108.147644
-
-//	UE_LOG(LogTemp, Warning, TEXT("              : Final position: %f, %f: Sending event to VizManager"), Evt.Position.X, Evt.Position.Y);
-	VizManager->HandleTouchEvent(Evt, &CmdDistributor);
-}
-
-#ifdef never
-void AVisualTestHarnessActor::HandleVisualizationTap(const FVector2D& ScreenPosition, TouchEvent::EType TouchType, int32 PointerIndex)
-{
-return; // trying out HandleMouseTap
-
-    if (!VizManager || !VisualizationImage) 
+    // Handle touch events for pinch-to-zoom
+    if (TouchType == ETouchType::Began)
     {
-        UE_LOG(LogTemp, Warning, TEXT("HandleVisualizationTap: Missing required components! VizManager: %d, VisualizationImage: %d"), 
-            VizManager != nullptr, VisualizationImage != nullptr);
-        return;
+        if (PointerIndex == 0)
+        {
+            // First finger - start pan if in empty space
+            if (IsPointInEmptySpace(WidgetPosition))
+            {
+                bIsPanning = true;
+                LastPanPosition = WidgetPosition;
+            }
+        }
+        else if (PointerIndex == 1 && bIsPanning)
+        {
+            // Second finger - start pinch
+            bIsPinching = true;
+            InitialPinchDistance = FVector2D::Distance(LastPanPosition, WidgetPosition);
+        }
     }
+    else if (TouchType == ETouchType::Moved)
+    {
+        if (PointerIndex == 0 && bIsPanning)
+        {
+            // First finger - continue pan
+            FVector2D Delta = WidgetPosition - LastPanPosition;
+            ApplyPan(Delta);
+            LastPanPosition = WidgetPosition;
+        }
+        else if (PointerIndex == 1 && bIsPinching)
+        {
+            // Second finger - update pinch
+            float CurrentDistance = FVector2D::Distance(LastPanPosition, WidgetPosition);
+            float PinchDelta = (CurrentDistance - InitialPinchDistance) * 0.01f; // Scale factor
+            ApplyZoom(PinchDelta);
+            InitialPinchDistance = CurrentDistance;
+        }
+    }
+    else if (TouchType == ETouchType::Ended)
+    {
+        if (PointerIndex == 0)
+        {
+            bIsPanning = false;
+        }
+        else if (PointerIndex == 1)
+        {
+            bIsPinching = false;
+        }
+    }
+
+    TouchEvent Evt;
+    Evt.Type = (TouchEvent::EType)TouchType;
+    Evt.Position = WidgetPosition;
+    Evt.TouchID = PointerIndex; 
 
     FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
-    FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(ScreenPosition);
-    UE_LOG(LogTemp, Warning, TEXT("HandleVisualizationTap: Screen: %f,%f -> Local: %f,%f"), 
-        ScreenPosition.X, ScreenPosition.Y, LocalPosition.X, LocalPosition.Y);
-
-    if (LocalPosition.X >= 0 && LocalPosition.Y >= 0 && 
-        LocalPosition.X < ImageGeometry.GetLocalSize().X && LocalPosition.Y < ImageGeometry.GetLocalSize().Y)
-    {
-        FVector2D VisualizationPosition = LocalPosition; 
-        TouchEvent Evt;
-        Evt.Type = TouchType;
-        Evt.Position = VisualizationPosition;
-        Evt.TouchID = PointerIndex; 
-
-        UE_LOG(LogTemp, Warning, TEXT("HandleVisualizationTap: Sending event to VizManager"));
-        VizManager->HandleTouchEvent(Evt, &CmdDistributor);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("HandleVisualizationTap: Position outside visualization bounds"));
-    }
+    FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(WidgetPosition);
+    Evt.Position.X = VisTextureSize.X * WidgetPosition.X / ImageGeometry.GetLocalSize().X;
+    Evt.Position.Y = VisTextureSize.Y * WidgetPosition.Y / ImageGeometry.GetLocalSize().Y;
+    VizManager->HandleTouchEvent(Evt, &CmdDistributor);
 }
 
-// --- Input Action Implementations ---
-void AVisualTestHarnessActor::OnVisInteractTriggered(const FInputActionValue& Value)
+void AVisualTestHarnessActor::OnZoomInTriggered(const FInputActionValue& Value)
 {
-return; // trying out HandleMouseTap
+    ApplyZoom(ZoomStep);
+}
 
-    // Get the 2D vector value (mouse position)
-    FVector2D MousePosition;// = Value.Get<FVector2D>();
+void AVisualTestHarnessActor::OnZoomOutTriggered(const FInputActionValue& Value)
+{
+    ApplyZoom(-ZoomStep);
+}
 
-	APlayerController* PC = GetWorld()->GetFirstPlayerController();
-	float MouseX, MouseY;
-	MouseX = MouseY = 0;
-	if(PC && PC->GetMousePosition(MouseX, MouseY))
-	{
-		UE_LOG(LogTemp, Log, TEXT("Mouse was clicked at: (%f, %f)"), MouseX, MouseY);
-	}
-	MousePosition.X = MouseX;
-	MousePosition.Y = MouseY;
-    UE_LOG(LogTemp, Warning, TEXT("OnVisInteractTriggered: Mouse position: %f, %f"), MousePosition.X, MousePosition.Y);
-
-//    FVector2D VisTextureSize = FVector2D(512, 512);
-
-    if (VisualizationImage) {
-        FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
-        FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(MousePosition);
-        UE_LOG(LogTemp, Warning, TEXT("OnVisInteractTriggered: Local position: %f, %f"), LocalPosition.X, LocalPosition.Y);
-        UE_LOG(LogTemp, Warning, TEXT("OnVisInteractTriggered: VisTextureSize: %f, %f"), VisTextureSize.X, VisTextureSize.Y);
-        UE_LOG(LogTemp, Warning, TEXT("OnVisInteractTriggered: ImageGeometry.GetLocalSize(): %f, %f"), ImageGeometry.GetLocalSize().X, ImageGeometry.GetLocalSize().Y);
-        UE_LOG(LogTemp, Warning, TEXT("OnVisInteractTriggered: ImageGeometry.GetAbsoluteSize(): %f, %f"), ImageGeometry.GetAbsoluteSize().X, ImageGeometry.GetAbsoluteSize().Y);
-        LocalPosition.X = ImageGeometry.GetAbsoluteSize().X * LocalPosition.X / VisTextureSize.X;
-        LocalPosition.Y = ImageGeometry.GetAbsoluteSize().Y * LocalPosition.Y / VisTextureSize.Y;
-
-        if (LocalPosition.X >= 0 && LocalPosition.Y >= 0 && 
-            LocalPosition.X < ImageGeometry.GetLocalSize().X && LocalPosition.Y < ImageGeometry.GetLocalSize().Y)
-        {
-            HandleVisualizationTap(MousePosition, TouchEvent::EType::Down, 0);
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("OnVisInteractTriggered: Click outside visualization bounds 0..%f, 0..%f"), ImageGeometry.GetLocalSize().X, ImageGeometry.GetLocalSize().Y);
-        }
-    }
-    else
+void AVisualTestHarnessActor::OnPanStarted(const FInputActionValue& Value)
+{
+    if (Value.GetValueType() == EInputActionValueType::Axis2D)
     {
-        UE_LOG(LogTemp, Warning, TEXT("OnVisInteractTriggered: VisualizationImage is null!"));
+        FVector2D Position = Value.Get<FVector2D>();
+        if (IsPointInEmptySpace(Position))
+        {
+            bIsPanning = true;
+            LastPanPosition = Position;
+        }
     }
 }
-#endif // never
+
+void AVisualTestHarnessActor::OnPanTriggered(const FInputActionValue& Value)
+{
+    if (bIsPanning && Value.GetValueType() == EInputActionValueType::Axis2D)
+    {
+        FVector2D CurrentPosition = Value.Get<FVector2D>();
+        FVector2D Delta = CurrentPosition - LastPanPosition;
+        ApplyPan(Delta);
+        LastPanPosition = CurrentPosition;
+    }
+}
+
+void AVisualTestHarnessActor::OnPanCompleted(const FInputActionValue& Value)
+{
+    bIsPanning = false;
+}
+
+void AVisualTestHarnessActor::OnZoomInButtonClicked()
+{
+    ApplyZoom(ZoomStep);
+}
+
+void AVisualTestHarnessActor::OnZoomOutButtonClicked()
+{
+    ApplyZoom(-ZoomStep);
+}
+
+void AVisualTestHarnessActor::ApplyZoom(float Delta)
+{
+    float NewScale = FMath::Clamp(ViewScale + Delta, MinZoom, MaxZoom);
+    ViewScale = NewScale;
+}
+
+void AVisualTestHarnessActor::ApplyPan(const FVector2D& Delta)
+{
+    ViewOffset += Delta / ViewScale; // Scale the pan delta by the current zoom level
+}
+
+bool AVisualTestHarnessActor::IsPointInEmptySpace(const FVector2D& Point) const
+{
+    if (!VizManager) return false;
+
+    // Convert screen point to world space
+    FVector2D WorldPoint = (Point - ViewOffset) / ViewScale;
+
+    // Check if the point is near any junction or segment
+    for (const auto& Junction : VizManager->Junctions)
+    {
+        if (Junction && Junction->IsPointNear(WorldPoint))
+        {
+            return false;
+        }
+    }
+
+    for (const auto& Segment : VizManager->Segments)
+    {
+        if (Segment && Segment->IsPointNear(WorldPoint))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 // --- UI Event Handlers ---
 void AVisualTestHarnessActor::OnSendCommandClicked()

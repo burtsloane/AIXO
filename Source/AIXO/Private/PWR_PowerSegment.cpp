@@ -1,4 +1,5 @@
 #include "PWR_PowerSegment.h"
+#include "ICH_PowerJunction.h"
 
 bool PWR_PowerSegment::HandleTouchEvent(const TouchEvent& Event, CommandDistributor* Distributor)
 {
@@ -28,5 +29,33 @@ bool PWR_PowerSegment::HandleTouchEvent(const TouchEvent& Event, CommandDistribu
 		}
 	}
 	return false;
+}
+
+bool PWR_PowerSegment::IsPointNear(const FVector2D& Point) const
+{
+	if (!JunctionA || !JunctionB) return false;
+
+	// Get segment endpoints
+	FVector2D Start(JunctionA->X + JunctionA->W/2, JunctionA->Y + JunctionA->H/2);
+	FVector2D End(JunctionB->X + JunctionB->W/2, JunctionB->Y + JunctionB->H/2);
+
+	// Calculate distance from point to line segment
+	const float Margin = 5.0f; // pixels
+	FVector2D Segment = End - Start;
+	float SegmentLength = Segment.Size();
+	if (SegmentLength < 0.0001f) return false;
+
+	FVector2D NormalizedSegment = Segment / SegmentLength;
+	FVector2D ToPoint = Point - Start;
+	float Projection = FVector2D::DotProduct(ToPoint, NormalizedSegment);
+	
+	// Clamp projection to segment
+	Projection = FMath::Clamp(Projection, 0.0f, SegmentLength);
+	
+	// Calculate closest point on segment
+	FVector2D ClosestPoint = Start + NormalizedSegment * Projection;
+	
+	// Check distance to closest point
+	return (Point - ClosestPoint).Size() <= Margin;
 }
 

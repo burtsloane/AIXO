@@ -93,7 +93,7 @@ protected:
     TObjectPtr<UTextureRenderTarget2D> VisRenderTarget;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visualization")
-    TObjectPtr<UTexture2D> WhiteSquareTexture;
+    TObjectPtr<UTexture2D> SolidColorTexture;
 
     // Map to store marker names and their values for JSON generation/loading
     TMap<FString, float> GridMarkerDefinitions;
@@ -107,6 +107,38 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> VisInteractAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> ZoomInAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> ZoomOutAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> PanAction;
+
+	// Zoom and pan state
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visualization")
+	FVector2D ViewOffset = FVector2D::ZeroVector;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visualization")
+	float ViewScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
+	float MinZoom = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
+	float MaxZoom = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
+	float ZoomStep = 0.2f;
+
+	// UI elements for zoom controls
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<UButton> ZoomInButton;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<UButton> ZoomOutButton;
 
 	// Initialization functions
 	void CreateWidgetAndGetReferences();
@@ -181,4 +213,29 @@ public:
 
 	friend class SSubDiagram;
 	friend class ULlamaComponent;
+
+	// Input handlers
+	void OnZoomInTriggered(const FInputActionValue& Value);
+	void OnZoomOutTriggered(const FInputActionValue& Value);
+	void OnPanTriggered(const FInputActionValue& Value);
+	void OnPanStarted(const FInputActionValue& Value);
+	void OnPanCompleted(const FInputActionValue& Value);
+
+	// UI event handlers for zoom buttons
+	UFUNCTION()
+	void OnZoomInButtonClicked();
+
+	UFUNCTION()
+	void OnZoomOutButtonClicked();
+
+	// Helper functions
+	void ApplyZoom(float Delta);
+	void ApplyPan(const FVector2D& Delta);
+	bool IsPointInEmptySpace(const FVector2D& Point) const;
+
+	// Touch gesture tracking
+	bool bIsPanning = false;
+	FVector2D LastPanPosition;
+	float InitialPinchDistance = 0.0f;
+	bool bIsPinching = false;
 }; 

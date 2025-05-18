@@ -597,6 +597,15 @@ public:
         return false;
     }
 
+    // Hit testing
+    virtual bool IsPointNear(const FVector2D& Point) const
+    {
+        // Check if point is within junction bounds plus a small margin
+        const float Margin = 10.0f; // pixels
+        return Point.X >= X - Margin && Point.X <= X + W + Margin &&
+               Point.Y >= Y - Margin && Point.Y <= Y + H + Margin;
+    }
+
     friend class PWR_PowerSegment;
     friend class PWR_PowerPropagation;
     friend class VisualizationManager;

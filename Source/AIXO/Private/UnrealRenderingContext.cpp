@@ -13,17 +13,21 @@
 FVector2f WhiteUV(0.5f, 0.5f);
 static const FSoftObjectPath TinyFontPath(TEXT("/Game/Fonts/Roboto-BoldCondensed.Roboto-BoldCondensed"));
 
-UnrealRenderingContext::UnrealRenderingContext(UWorld* InWorld, UTextureRenderTarget2D* InRenderTarget, UTexture2D* InSolidColorTexture)
-    : RenderTarget(InRenderTarget),
-      Canvas(nullptr),
-      World(InWorld),
-      SolidColorTexture(InSolidColorTexture)
+UnrealRenderingContext::UnrealRenderingContext(UWorld* InWorld, UTextureRenderTarget2D* InRenderTarget, UTexture2D* InWhiteSquareTexture)
+    : RenderTarget(InRenderTarget)
+    , World(InWorld)
+    , SolidColorTexture(InWhiteSquareTexture)
+    , VertexCount(0)
 {
+    // Initialize transform stack with identity transform
+    FTransform2D IdentityTransform(1.0f, FVector2D::ZeroVector);  // Scale=1, Translation=0
+    TransformStack.Add(IdentityTransform);
+    CurrentTransform = IdentityTransform;
+
     if (RenderTarget)
     {
         CanvasSize = FVector2D(RenderTarget->SizeX, RenderTarget->SizeY);
     }
-    VertexCount = 0;
 }
 
 void UnrealRenderingContext::ResetVertexCount()
@@ -154,46 +158,54 @@ void UnrealRenderingContext::DrawCircle(const FVector2D& Center,
     }
 }
 
-void UnrealRenderingContext::DrawRectangle(const FBox2D& Rect,
-                                           const FLinearColor& Color,
-                                           bool bFill)
+void UnrealRenderingContext::DrawRectangle(const FBox2D& Box, const FLinearColor& Color, bool bFilled)
 {
-    IncrementVertexCount(bFill ? 4 : 8);
-    const FColor Col = To8bit(Color);
-	FVector2f TL(Rect.Min);
-	FVector2f BR(Rect.Max);
-	FVector2f TR(BR.X, TL.Y);
-	FVector2f BL(TL.X, BR.Y);
+    // Transform the box corners
+    FVector2D Min = CurrentTransform.TransformPoint(Box.Min);
+    FVector2D Max = CurrentTransform.TransformPoint(Box.Max);
 
-    if (bFill)
+    // Create vertices for transformed box
+    FDiagramVertex Verts[4];
+    Verts[0].Pos = FVector2f(Min.X, Min.Y);
+    Verts[1].Pos = FVector2f(Max.X, Min.Y);
+    Verts[2].Pos = FVector2f(Max.X, Max.Y);
+    Verts[3].Pos = FVector2f(Min.X, Max.Y);
+
+    FColor Color8Bit = To8bit(Color);
+    for (int i = 0; i < 4; ++i)
     {
-        uint32 v0 = PushVertex(FVector2D(TL), WhiteUV, Col);
-        uint32 v1 = PushVertex(FVector2D(TR), WhiteUV, Col);
-        uint32 v2 = PushVertex(FVector2D(BL), WhiteUV, Col);
-        uint32 v3 = PushVertex(FVector2D(BR), WhiteUV, Col);
-        WorkingIndices.Append({v0,v1,v2, v2,v3,v1});
+        Verts[i].Col = Color8Bit;
+        Verts[i].UV = FVector2f(0, 0);
     }
-    else // outline: 4 thin quads
+
+    // Add vertices and indices
+    uint32 BaseIndex = PresentedVertices.Num();
+    for (int i = 0; i < 4; ++i)
     {
-        float T = 1.0f;                              // outline thickness in px
+        PresentedVertices.Add(Verts[i]);
+    }
 
-        auto AddQuad = [&](FVector2f A, FVector2f B, FVector2f C, FVector2f D)
-        {
-            uint32 a = PushVertex(FVector2D(FMath::RoundToFloat(A.X), FMath::RoundToFloat(A.Y)), WhiteUV, Col);
-            uint32 b = PushVertex(FVector2D(FMath::RoundToFloat(B.X), FMath::RoundToFloat(B.Y)), WhiteUV, Col);
-            uint32 c = PushVertex(FVector2D(FMath::RoundToFloat(C.X), FMath::RoundToFloat(C.Y)), WhiteUV, Col);
-            uint32 d = PushVertex(FVector2D(FMath::RoundToFloat(D.X), FMath::RoundToFloat(D.Y)), WhiteUV, Col);
-            WorkingIndices.Append({a,b,c, a,c,d});
-        };
-
-        // top
-        AddQuad(TL, TR, TR + FVector2f(0,T), TL + FVector2f(0,T));
-        // bottom
-        AddQuad(BL - FVector2f(0,T), BR - FVector2f(0,T), BR, BL);
-        // left
-        AddQuad(TL, TL + FVector2f(T,0), BL + FVector2f(T,0), BL);
-        // right
-        AddQuad(TR - FVector2f(T,0), TR, BR, BR - FVector2f(T,0));
+    if (bFilled)
+    {
+        // Add two triangles for filled rectangle
+        PresentedIndices.Add(BaseIndex);
+        PresentedIndices.Add(BaseIndex + 1);
+        PresentedIndices.Add(BaseIndex + 2);
+        PresentedIndices.Add(BaseIndex);
+        PresentedIndices.Add(BaseIndex + 2);
+        PresentedIndices.Add(BaseIndex + 3);
+    }
+    else
+    {
+        // Add line segments for outline
+        PresentedIndices.Add(BaseIndex);
+        PresentedIndices.Add(BaseIndex + 1);
+        PresentedIndices.Add(BaseIndex + 1);
+        PresentedIndices.Add(BaseIndex + 2);
+        PresentedIndices.Add(BaseIndex + 2);
+        PresentedIndices.Add(BaseIndex + 3);
+        PresentedIndices.Add(BaseIndex + 3);
+        PresentedIndices.Add(BaseIndex);
     }
 }
 
@@ -271,5 +283,21 @@ void UnrealRenderingContext::DrawTinyText(const FVector2D& Pos,
                                       const FLinearColor& Color)
 {
 	DrawText(Pos, Text, Color);
+}
+
+void UnrealRenderingContext::PushTransform(const FTransform2D& Transform)
+{
+    // Multiply new transform with current transform
+    CurrentTransform = Transform.Concatenate(CurrentTransform);
+    TransformStack.Add(CurrentTransform);
+}
+
+void UnrealRenderingContext::PopTransform()
+{
+    if (TransformStack.Num() > 1)
+    {
+        TransformStack.Pop();
+        CurrentTransform = TransformStack.Last();
+    }
 }
 
