@@ -3,6 +3,7 @@
 #include "LlamaComponent.h"
 #include <time.h>
 #include "common.h"
+//#include "../../../../Source/AIXO/Source/AIXOPublic/VisualTestHarnessActor.h"
 #include "VisualTestHarnessActor.h"
 
 #define GGML_CUDA_DMMV_X 64
@@ -115,7 +116,7 @@ namespace Internal
 
         llama_context_params ctx_params = llama_context_default_params();
         ctx_params.n_ctx = n_ctx_from_model; // Use model's training context or a configured value
-        ctx_params.n_batch = 2048; // Or llama_n_batch(ctx) from model if available, or a sensible default. Max tokens per llama_decode call.
+        ctx_params.n_batch = 256; // Or llama_n_batch(ctx) from model if available, or a sensible default. Max tokens per llama_decode call.
         ctx_params.n_threads = n_threads; // From your global namespace
         ctx_params.n_threads_batch = n_threads; // For batch processing
 		this->batch_capacity = ctx_params.n_batch; // Store the capacity you used for context
@@ -228,15 +229,18 @@ MirroredKvCacheTokens.clear();
 			}
 		}
 
+		BroadcastContextVisualUpdate_LlamaThread();
+
 		int32_t current_kv_pos_for_predecode = 0; // Start from beginning of cache
 		if (!FixedBlocksCombinedTokens.empty()) {
+			int batch_size_override = 64;
 			// Use a simplified version of DecodeTokensAndSample's prompt processing part
 			// Or a dedicated helper function for this.
 			// For now, let's conceptualize it:
 			for (int32_t i = 0; i < FixedBlocksCombinedTokens.size(); /* i advanced by batch */ ) {
 				common_batch_clear(batch);
 				int32_t n_batch_tokens = 0;
-				for (int32_t j = 0; j < this->batch_capacity && i + j < FixedBlocksCombinedTokens.size(); ++j) {
+				for (int32_t j = 0; j < batch_size_override/*this->batch_capacity*/ && i + j < FixedBlocksCombinedTokens.size(); ++j) {
 					common_batch_add(batch, FixedBlocksCombinedTokens[i + j], current_kv_pos_for_predecode + j, {0}, false /* no logits needed */);
 					n_batch_tokens++;
 				}
@@ -260,6 +264,8 @@ MirroredKvCacheTokens.clear();
 				// Optional: Send progress update to main thread for UI
 				float Progress = static_cast<float>(current_kv_pos_for_predecode) / FixedBlocksCombinedTokens.size();
 				qLlamaToMain.enqueue([this, Progress]() { if (progressCb) progressCb(Progress); });
+				BroadcastContextVisualUpdate_LlamaThread();
+				if (!bIsRunning) return;
 			}
 			kv_cache_token_cursor = MirroredKvCacheTokens.size();
 			UE_LOG(LogTemp, Log, TEXT("LlamaThread: Fixed context blocks pre-decoded. KV cache populated with %d tokens."), MirroredKvCacheTokens.size());
@@ -418,7 +424,7 @@ MirroredKvCacheTokens.clear();
 
 		// --- 5. Broadcast Context Visual Update ---
 		// It's good to update the visualizer after the KV cache is refreshed.
-		BroadcastContextVisualUpdate_LlamaThread(); // Assuming this function exists and is safe to call
+		BroadcastContextVisualUpdate_LlamaThread();
 	}
 
     // Invalidates KV cache from a certain token position onwards in the logical sequence
@@ -941,7 +947,7 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 		std::string full_context_str;
 		full_context_str.reserve(n_ctx_from_model * 6); // Increased pre-allocation a bit
 
-		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Assembling context dump..."));
+//		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Assembling context dump..."));
 
 		// --- This order MUST EXACTLY MATCH how AssembleFullPromptForTurn builds the prompt ---
 
@@ -1000,7 +1006,7 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 		full_context_str += "\n========== END OF FULL CONTEXT DUMP ==========\n";
 
 
-		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Context dump assembled. Length: %d chars (approx)."), full_context_str.length());
+//		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Context dump assembled. Length: %d chars (approx)."), full_context_str.length());
 		return full_context_str;
 	}
 
@@ -1156,7 +1162,7 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 				// OwnerPtr and CapturedPayload are copies held by the lambda.
 				if (OwnerPtr && OwnerPtr->IsValidLowLevel()) { // Good practice to check validity on main thread
 					OwnerPtr->ForwardContextUpdateToGameThread(CapturedPayload);
-					UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread lambda executed."));
+//					UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread lambda executed."));
 				} else {
 					UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's OwnerLlamaComponentPtr was null or invalid when ForwardContextUpdateToGameThread lambda executed."));
 				}
@@ -1166,13 +1172,11 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 		}
 
 
-  UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Broadcasting Context Update. TotalTokenCapacity: %d, KvCacheDecodedTokenCount: %d, NumVisualBlocks: %d"),
-  Payload.TotalTokenCapacity, Payload.KvCacheDecodedTokenCount, Payload.Blocks.Num());
+//  UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Broadcasting Context Update. TotalTokenCapacity: %d, KvCacheDecodedTokenCount: %d, NumVisualBlocks: %d"), Payload.TotalTokenCapacity, Payload.KvCacheDecodedTokenCount, Payload.Blocks.Num());
   for (int32 i = 0; i < Payload.Blocks.Num(); ++i) {
       const FContextVisBlock& Block = Payload.Blocks[i];
       FString BlockTypeName = UEnum::GetValueAsString(Block.BlockType);
-      UE_LOG(LogTemp, Log, TEXT("  Block %d: Type=%s, Start=%.2f, Height=%.4f, Color=(R=%.1f,G=%.1f,B=%.1f)"),
-          i, *BlockTypeName, Block.NormalizedStart, Block.NormalizedHeight, Block.BlockColor.R, Block.BlockColor.G, Block.BlockColor.B);
+//      UE_LOG(LogTemp, Log, TEXT("  Block %d: Type=%s, Start=%.2f, Height=%.4f, Color=(R=%.1f,G=%.1f,B=%.1f)"), i, *BlockTypeName, Block.NormalizedStart, Block.NormalizedHeight, Block.BlockColor.R, Block.BlockColor.G, Block.BlockColor.B);
   }
 
   if (OwningLlamaComponentPtr) { // Ensure OwningLlamaComponentPtr is valid
@@ -1675,7 +1679,7 @@ void ULlamaComponent::ForwardContextUpdateToGameThread(const FContextVisPayload&
     if (OnLlamaContextChangedDelegate.IsBound())
     {
         OnLlamaContextChangedDelegate.Broadcast(Payload);
-		UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread OnLlamaContextChangedDelegate."));
+//		UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread OnLlamaContextChangedDelegate."));
     }
     else
     {

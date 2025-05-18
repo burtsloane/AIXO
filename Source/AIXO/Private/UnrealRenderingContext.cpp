@@ -42,6 +42,7 @@ void UnrealRenderingContext::IncrementVertexCount(int32 Amount)
 
 void UnrealRenderingContext::ClearBuffers()
 {
+    // Only clear working buffers, not presented buffers
     WorkingVertices.Reset();
     WorkingIndices.Reset();
 }
@@ -67,34 +68,45 @@ UnrealRenderingContext::~UnrealRenderingContext()
 
 bool UnrealRenderingContext::BeginDrawing()
 {
+    // Ensure we start with clean working buffers
+    WorkingVertices.Reset();
+    WorkingIndices.Reset();
     ResetVertexCount();
-    ClearBuffers();
-    return true;    // now purely a recorder
+    return true;
 }
 
 void UnrealRenderingContext::EndDrawing()
 {
-    // Hand off CPU‑built geometry to Slate for the next render pass.
-    PresentedVertices = MoveTemp(WorkingVertices);
-    PresentedIndices  = MoveTemp(WorkingIndices);
+    // Copy the working buffers to presented buffers instead of moving
+    PresentedVertices = WorkingVertices;
+    PresentedIndices = WorkingIndices;
 
-//    UE_LOG(LogTemp, Warning,
-//           TEXT("UnrealRenderingContext::EndDrawing: %d vertices, %d indices (presented)"),
-//           PresentedVertices.Num(), PresentedIndices.Num());
+    // Clear working buffers for next frame
+    WorkingVertices.Reset();
+    WorkingIndices.Reset();
+
+//    UE_LOG(LogTemp, Log, TEXT("UnrealRenderingContext::EndDrawing: %d vertices, %d indices (presented)"), PresentedVertices.Num(), PresentedIndices.Num());
 }
 
 void UnrealRenderingContext::DrawLine(const FVector2D& Start, const FVector2D& End, const FLinearColor& Color, float Thickness)
 {
-    IncrementVertexCount(4);   // quad
+    // Transform the line endpoints
+    FVector2D TransformedStart = CurrentTransform.TransformPoint(Start);
+    FVector2D TransformedEnd = CurrentTransform.TransformPoint(End);
 
-    FVector2f A(Start);
-    FVector2f B(End);
+    // Calculate scaled thickness - get max scale from transform matrix
+    TScale2<float> Scale = CurrentTransform.GetMatrix().GetScale();
+    float MaxScale = FMath::Max(FMath::Abs(Scale.GetVector().X), FMath::Abs(Scale.GetVector().Y));
+    float ScaledThickness = FMath::Max(1.0f, Thickness * MaxScale);  // Scale thickness with zoom
+
+    FVector2f A(TransformedStart);
+    FVector2f B(TransformedEnd);
     FVector2f Dir = (B - A).GetSafeNormal();
-    FVector2f N   = FVector2f(-Dir.Y, Dir.X) * 0.5f * Thickness;
-    FVector2f M   = Dir * 0.5f * Thickness;
+    FVector2f N = FVector2f(-Dir.Y, Dir.X) * 0.5f * ScaledThickness;
+    FVector2f M = Dir * 0.5f * ScaledThickness;
 
-	A -= M;
-	B += M;
+    A -= M;
+    B += M;
 
     uint32 v0 = PushVertex(FVector2D(A - N), WhiteUV, Color.ToFColor(true));
     uint32 v1 = PushVertex(FVector2D(B - N), WhiteUV, Color.ToFColor(true));
@@ -112,48 +124,55 @@ void UnrealRenderingContext::DrawCircle(const FVector2D& Center,
 {
     if (Radius <= 0 || Segments < 3) return;
 
+    // Transform the center and scale the radius
+    FVector2D TransformedCenter = CurrentTransform.TransformPoint(Center);
+    TScale2<float> Scale = CurrentTransform.GetMatrix().GetScale();
+    float MaxScale = FMath::Max(FMath::Abs(Scale.GetVector().X), FMath::Abs(Scale.GetVector().Y));
+    float ScaledRadius = Radius * MaxScale;
+    float LineWidth = FMath::Max(1.0f, 1.0f * MaxScale);  // Scale line width with zoom
+
     FColor Col = To8bit(Color);
 
     if (bFill)
     {
         IncrementVertexCount(Segments + 2);
-        uint32 CenterIdx = PushVertex(Center, WhiteUV, Col);
+        uint32 CenterIdx = PushVertex(TransformedCenter, WhiteUV, Col);
 
         float Step = 2.f * PI / Segments;
-        uint32 PrevIdx = PushVertex(Center + FVector2D(Radius, 0), WhiteUV, Col);
+        uint32 PrevIdx = PushVertex(TransformedCenter + FVector2D(ScaledRadius, 0), WhiteUV, Col);
 
         for (int i = 1; i <= Segments; ++i)
         {
             float Ang = i * Step;
-            FVector2D P = Center + FVector2D(FMath::Cos(Ang), FMath::Sin(Ang)) * Radius;
+            FVector2D P = TransformedCenter + FVector2D(FMath::Cos(Ang), FMath::Sin(Ang)) * ScaledRadius;
             uint32 CurrIdx = PushVertex(P, WhiteUV, Col);
             WorkingIndices.Append({CenterIdx, PrevIdx, CurrIdx});
             PrevIdx = CurrIdx;
         }
     }
-    else // outline: quad per segment
+    else // outline: thin rectangles for each segment
     {
-        float T = 1.0f;
-        IncrementVertexCount(Segments * 4);
+        float InnerRadius = ScaledRadius - LineWidth/2;
+        float OuterRadius = ScaledRadius + LineWidth/2;
 
         float Step = 2.f * PI / Segments;
-        FVector2D PrevOuter = Center + FVector2D(Radius, 0);
-        FVector2D PrevInner = Center + FVector2D(Radius - T, 0);
-
-        for (int i = 1; i <= Segments; ++i)
+        for (int i = 0; i < Segments; ++i)
         {
-            float Ang = i * Step;
-            FVector2D Outer = Center + FVector2D(FMath::Cos(Ang), FMath::Sin(Ang)) * Radius;
-            FVector2D Inner = Center + FVector2D(FMath::Cos(Ang), FMath::Sin(Ang)) * (Radius - T);
+            float Ang1 = i * Step;
+            float Ang2 = (i + 1) * Step;
+            
+            // Calculate inner and outer points for this segment
+            FVector2D Inner1 = TransformedCenter + FVector2D(FMath::Cos(Ang1), FMath::Sin(Ang1)) * InnerRadius;
+            FVector2D Outer1 = TransformedCenter + FVector2D(FMath::Cos(Ang1), FMath::Sin(Ang1)) * OuterRadius;
+            FVector2D Inner2 = TransformedCenter + FVector2D(FMath::Cos(Ang2), FMath::Sin(Ang2)) * InnerRadius;
+            FVector2D Outer2 = TransformedCenter + FVector2D(FMath::Cos(Ang2), FMath::Sin(Ang2)) * OuterRadius;
 
-            uint32 a = PushVertex(PrevInner, WhiteUV, Col);
-            uint32 b = PushVertex(PrevOuter, WhiteUV, Col);
-            uint32 c = PushVertex(Outer,      WhiteUV, Col);
-            uint32 d = PushVertex(Inner,      WhiteUV, Col);
-            WorkingIndices.Append({a,b,c, a,c,d});
-
-            PrevOuter = Outer;
-            PrevInner = Inner;
+            // Create a thin rectangle for this segment
+            uint32 v0 = PushVertex(Inner1, WhiteUV, Col);
+            uint32 v1 = PushVertex(Outer1, WhiteUV, Col);
+            uint32 v2 = PushVertex(Outer2, WhiteUV, Col);
+            uint32 v3 = PushVertex(Inner2, WhiteUV, Col);
+            WorkingIndices.Append({v0, v1, v2, v0, v2, v3});
         }
     }
 }
@@ -164,48 +183,76 @@ void UnrealRenderingContext::DrawRectangle(const FBox2D& Box, const FLinearColor
     FVector2D Min = CurrentTransform.TransformPoint(Box.Min);
     FVector2D Max = CurrentTransform.TransformPoint(Box.Max);
 
-    // Create vertices for transformed box
-    FDiagramVertex Verts[4];
-    Verts[0].Pos = FVector2f(Min.X, Min.Y);
-    Verts[1].Pos = FVector2f(Max.X, Min.Y);
-    Verts[2].Pos = FVector2f(Max.X, Max.Y);
-    Verts[3].Pos = FVector2f(Min.X, Max.Y);
+    // Get scale for line thickness
+    TScale2<float> Scale = CurrentTransform.GetMatrix().GetScale();
+    float MaxScale = FMath::Max(FMath::Abs(Scale.GetVector().X), FMath::Abs(Scale.GetVector().Y));
+    float LineWidth = FMath::Max(1.0f, 1.0f * MaxScale);  // Scale line width with zoom
+
+    // Ensure minimum size of 1 pixel after scaling
+    if (Max.X - Min.X < LineWidth) {
+        float CenterX = (Min.X + Max.X) * 0.5f;
+        Min.X = CenterX - LineWidth/2;
+        Max.X = CenterX + LineWidth/2;
+    }
+    if (Max.Y - Min.Y < LineWidth) {
+        float CenterY = (Min.Y + Max.Y) * 0.5f;
+        Min.Y = CenterY - LineWidth/2;
+        Max.Y = CenterY + LineWidth/2;
+    }
 
     FColor Color8Bit = To8bit(Color);
-    for (int i = 0; i < 4; ++i)
-    {
-        Verts[i].Col = Color8Bit;
-        Verts[i].UV = FVector2f(0, 0);
-    }
-
-    // Add vertices and indices
-    uint32 BaseIndex = PresentedVertices.Num();
-    for (int i = 0; i < 4; ++i)
-    {
-        PresentedVertices.Add(Verts[i]);
-    }
 
     if (bFilled)
     {
-        // Add two triangles for filled rectangle
-        PresentedIndices.Add(BaseIndex);
-        PresentedIndices.Add(BaseIndex + 1);
-        PresentedIndices.Add(BaseIndex + 2);
-        PresentedIndices.Add(BaseIndex);
-        PresentedIndices.Add(BaseIndex + 2);
-        PresentedIndices.Add(BaseIndex + 3);
+        // Create vertices for filled rectangle in clockwise order
+        uint32 v0 = PushVertex(Min, WhiteUV, Color8Bit);                    // Bottom-left
+        uint32 v1 = PushVertex(FVector2D(Max.X, Min.Y), WhiteUV, Color8Bit); // Bottom-right
+        uint32 v2 = PushVertex(Max, WhiteUV, Color8Bit);                    // Top-right
+        uint32 v3 = PushVertex(FVector2D(Min.X, Max.Y), WhiteUV, Color8Bit); // Top-left
+
+        // Add two triangles for filled rectangle (both clockwise)
+        WorkingIndices.Append({v0, v1, v2, v0, v2, v3});
     }
     else
     {
-        // Add line segments for outline
-        PresentedIndices.Add(BaseIndex);
-        PresentedIndices.Add(BaseIndex + 1);
-        PresentedIndices.Add(BaseIndex + 1);
-        PresentedIndices.Add(BaseIndex + 2);
-        PresentedIndices.Add(BaseIndex + 2);
-        PresentedIndices.Add(BaseIndex + 3);
-        PresentedIndices.Add(BaseIndex + 3);
-        PresentedIndices.Add(BaseIndex);
+        // For outline, create thin rectangles for each edge
+        float HalfWidth = LineWidth/2;
+
+        // Bottom edge
+        FVector2D BottomMin(Min.X, Min.Y - HalfWidth);
+        FVector2D BottomMax(Max.X, Min.Y + HalfWidth);
+        uint32 b0 = PushVertex(BottomMin, WhiteUV, Color8Bit);
+        uint32 b1 = PushVertex(FVector2D(BottomMax.X, BottomMin.Y), WhiteUV, Color8Bit);
+        uint32 b2 = PushVertex(BottomMax, WhiteUV, Color8Bit);
+        uint32 b3 = PushVertex(FVector2D(BottomMin.X, BottomMax.Y), WhiteUV, Color8Bit);
+        WorkingIndices.Append({b0, b1, b2, b0, b2, b3});
+
+        // Right edge
+        FVector2D RightMin(Max.X - HalfWidth, Min.Y);
+        FVector2D RightMax(Max.X + HalfWidth, Max.Y);
+        uint32 r0 = PushVertex(RightMin, WhiteUV, Color8Bit);
+        uint32 r1 = PushVertex(FVector2D(RightMax.X, RightMin.Y), WhiteUV, Color8Bit);
+        uint32 r2 = PushVertex(RightMax, WhiteUV, Color8Bit);
+        uint32 r3 = PushVertex(FVector2D(RightMin.X, RightMax.Y), WhiteUV, Color8Bit);
+        WorkingIndices.Append({r0, r1, r2, r0, r2, r3});
+
+        // Top edge
+        FVector2D TopMin(Min.X, Max.Y - HalfWidth);
+        FVector2D TopMax(Max.X, Max.Y + HalfWidth);
+        uint32 t0 = PushVertex(TopMin, WhiteUV, Color8Bit);
+        uint32 t1 = PushVertex(FVector2D(TopMax.X, TopMin.Y), WhiteUV, Color8Bit);
+        uint32 t2 = PushVertex(TopMax, WhiteUV, Color8Bit);
+        uint32 t3 = PushVertex(FVector2D(TopMin.X, TopMax.Y), WhiteUV, Color8Bit);
+        WorkingIndices.Append({t0, t1, t2, t0, t2, t3});
+
+        // Left edge
+        FVector2D LeftMin(Min.X - HalfWidth, Min.Y);
+        FVector2D LeftMax(Min.X + HalfWidth, Max.Y);
+        uint32 l0 = PushVertex(LeftMin, WhiteUV, Color8Bit);
+        uint32 l1 = PushVertex(FVector2D(LeftMax.X, LeftMin.Y), WhiteUV, Color8Bit);
+        uint32 l2 = PushVertex(LeftMax, WhiteUV, Color8Bit);
+        uint32 l3 = PushVertex(FVector2D(LeftMin.X, LeftMax.Y), WhiteUV, Color8Bit);
+        WorkingIndices.Append({l0, l1, l2, l0, l2, l3});
     }
 }
 
@@ -214,12 +261,50 @@ void UnrealRenderingContext::DrawTriangle(const FVector2D& P1,
                                           const FVector2D& P3,
                                           const FLinearColor& Color, bool bFill)
 {
-    IncrementVertexCount(3);
+    // Transform the points
+    FVector2D TransformedP1 = CurrentTransform.TransformPoint(P1);
+    FVector2D TransformedP2 = CurrentTransform.TransformPoint(P2);
+    FVector2D TransformedP3 = CurrentTransform.TransformPoint(P3);
+
     FColor Col = To8bit(Color);
-    uint32 a = PushVertex(P1, WhiteUV, Col);
-    uint32 b = PushVertex(P2, WhiteUV, Col);
-    uint32 c = PushVertex(P3, WhiteUV, Col);
-    WorkingIndices.Append({a,b,c});
+
+    if (bFill)
+    {
+        // For filled triangle, use a single triangle
+        uint32 a = PushVertex(TransformedP1, WhiteUV, Col);
+        uint32 b = PushVertex(TransformedP2, WhiteUV, Col);
+        uint32 c = PushVertex(TransformedP3, WhiteUV, Col);
+        WorkingIndices.Append({a, b, c});
+    }
+    else
+    {
+        // For outline, create thin rectangles for each edge
+        TScale2<float> Scale = CurrentTransform.GetMatrix().GetScale();
+        float MaxScale = FMath::Max(FMath::Abs(Scale.GetVector().X), FMath::Abs(Scale.GetVector().Y));
+        float LineWidth = FMath::Max(1.0f, 1.0f * MaxScale);  // Scale line width with zoom
+
+        // Helper function to create a thin rectangle for a line segment
+        auto CreateEdgeRect = [&](const FVector2D& Start, const FVector2D& End) {
+            FVector2D Dir = (End - Start).GetSafeNormal();
+            FVector2D Perp = FVector2D(-Dir.Y, Dir.X) * (LineWidth/2);
+            
+            FVector2D TL = Start - Perp;
+            FVector2D TR = Start + Perp;
+            FVector2D BL = End - Perp;
+            FVector2D BR = End + Perp;
+
+            uint32 v0 = PushVertex(TL, WhiteUV, Col);
+            uint32 v1 = PushVertex(TR, WhiteUV, Col);
+            uint32 v2 = PushVertex(BR, WhiteUV, Col);
+            uint32 v3 = PushVertex(BL, WhiteUV, Col);
+            WorkingIndices.Append({v0, v1, v2, v0, v2, v3});
+        };
+
+        // Create rectangles for each edge
+        CreateEdgeRect(TransformedP1, TransformedP2);
+        CreateEdgeRect(TransformedP2, TransformedP3);
+        CreateEdgeRect(TransformedP3, TransformedP1);
+    }
 }
 
 static const FFontCharacter* FindGlyph(const UFont* Font, TCHAR CodePoint)
@@ -236,22 +321,27 @@ void UnrealRenderingContext::DrawText(const FVector2D& Pos,
                                       const FString&   Text,
                                       const FLinearColor& Color)
 {
-	UFont* Font = Cast<UFont>(TinyFontPath.TryLoad());
-//	if (!Font)
-//UE_LOG(LogTemp, Warning, TEXT("UnrealRenderingContext::DrawText %hs"), Font?"ok":"FONT NOT FOUND!!!");
-	if (!Font) return;
+    UFont* Font = Cast<UFont>(TinyFontPath.TryLoad());
+    if (!Font) return;
 
     FColor Col = To8bit(Color);
     Col.A = 255;
-    FVector2D Pen = Pos;
+
+    // Transform the base position
+    FVector2D TransformedPos = CurrentTransform.TransformPoint(Pos);
+
+    // Get the scale from the transform matrix
+    TScale2<float> Scale = CurrentTransform.GetMatrix().GetScale();
+    float MaxScale = FMath::Max(FMath::Abs(Scale.GetVector().X), FMath::Abs(Scale.GetVector().Y));
+
+    FVector2D Pen = TransformedPos;
 
     for (TCHAR Ch : Text)
     {
         const FFontCharacter* Glyph = FindGlyph(Font, Ch);
-//UE_LOG(LogTemp, Warning, TEXT("Glyph=%d %hs"), (int)(Ch), Glyph?"ok":"NOT FOUND!!!");
-        if (!Glyph) continue;                          // should never hit
+        if (!Glyph) continue;
 
-        uint8 Page = Glyph->TextureIndex;          // page 0,1,…
+        uint8 Page = Glyph->TextureIndex;
         if (!Font->Textures.IsValidIndex(Page)) continue;
         const FTextureResource* Res = Font->Textures[Page]->GetResource();
         if (!Res) continue;
@@ -259,8 +349,13 @@ void UnrealRenderingContext::DrawText(const FVector2D& Pos,
         const float InvW = 1.f / Res->GetSizeX();
         const float InvH = 1.f / Res->GetSizeY();
 
-        FVector2D TL = Pen + FVector2D(0.f, Glyph->VerticalOffset);
-        FVector2D BR = TL  + FVector2D(Glyph->USize, Glyph->VSize);
+        // Scale the glyph size by the transform
+        float ScaledUSize = Glyph->USize * MaxScale;
+        float ScaledVSize = Glyph->VSize * MaxScale;
+        float ScaledVerticalOffset = Glyph->VerticalOffset * MaxScale;
+
+        FVector2D TL = Pen + FVector2D(0.f, ScaledVerticalOffset);
+        FVector2D BR = TL + FVector2D(ScaledUSize, ScaledVSize);
 
         FVector2f UV0(Glyph->StartU * InvW,                  Glyph->StartV * InvH);
         FVector2f UV1((Glyph->StartU + Glyph->USize) * InvW,
@@ -273,8 +368,8 @@ void UnrealRenderingContext::DrawText(const FVector2D& Pos,
         WorkingIndices.Append({v0,v1,v2, v0,v2,v3});
         IncrementVertexCount(4);
 
-        // Advance pen: glyph width + global kerning
-        Pen.X += Glyph->USize + Font->Kerning;
+        // Advance pen: scaled glyph width + scaled kerning
+        Pen.X += (Glyph->USize + Font->Kerning) * MaxScale;
     }
 }
 

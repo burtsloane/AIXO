@@ -23,30 +23,21 @@ private:
     // Potentially add lists for other top-level drawable things if needed
 
 public:
+    // Constructor/Destructor - moved to cpp
     VisualizationManager();
     ~VisualizationManager();
 
+    // Core functionality - moved to cpp
     void AddJunction(ICH_PowerJunction* Junction);
     void AddSegment(PWR_PowerSegment* Segment);
-    // Add Remove methods if needed
-
-    /** Renders all managed visual components onto the given context. */
     void Render(RenderingContext& Context);
-
-    /** 
-     * Dispatches a touch event to the appropriate visual component.
-     * @param Event The touch event data.
-     * @param Distributor The command distributor for elements to use.
-     * @return True if the event was handled, false otherwise.
-     */
     bool HandleTouchEvent(const TouchEvent& Event, CommandDistributor* Distributor);
-    
     void ClearSelections();
     void SetupSelection(ICH_PowerJunction* Junction);
-	void RefreshSelection();
+    void RefreshSelection();
 
-	ICH_PowerJunction* ClickedOnJunction;
+    // Public state
+    ICH_PowerJunction* ClickedOnJunction;
 
     friend class AVisualTestHarnessActor;
-    friend class ULlamaComponent;
 }; 

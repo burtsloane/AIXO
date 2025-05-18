@@ -105,6 +105,11 @@ AVisualTestHarnessActor::AVisualTestHarnessActor()
     LlamaAIXOComponent->SystemPromptText = SystemPromptText;
 }
 
+AVisualTestHarnessActor::~AVisualTestHarnessActor()
+{
+    delete VizManager;  // Clean up the raw pointer
+}
+
 void AVisualTestHarnessActor::BeginPlay()
 {
 	Super::BeginPlay();
@@ -278,10 +283,8 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 
 void AVisualTestHarnessActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    // TUniquePtr members clean themselves up automatically when actor is destroyed
-    // No need for manual deletes
-//    CommandDist.Reset();
-    VizManager.Reset();
+    delete VizManager;  // Clean up
+    VizManager = nullptr;
     RenderContext.Reset();
 
     Super::EndPlay(EndPlayReason);
@@ -294,7 +297,9 @@ void AVisualTestHarnessActor::InitializeTestSystems()
 
 void AVisualTestHarnessActor::InitializeVisualization()
 {
-    VizManager = MakeUnique<VisualizationManager>();
+    // Create the visualization manager
+    delete VizManager;  // Clean up any existing instance
+    VizManager = new VisualizationManager();  // Create new instance
     UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: VizManager created."));
     
     VisRenderTarget = NewObject<UTextureRenderTarget2D>(this);
@@ -484,70 +489,132 @@ void AVisualTestHarnessActor::AddLogMessage(const FString& Message)
     UE_LOG(LogTemp, Log, TEXT("TestHarness: %s"), *Message);
 }
 
-void AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, int32 TouchType, int32 PointerIndex)
+bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, int32 InTouchType, int32 PointerIndex)
 {
-    // Convert screen position to world space
-    FVector2D WorldPosition = (WidgetPosition - ViewOffset) / ViewScale;
-
-    // Handle touch events for pinch-to-zoom
-    if (TouchType == ETouchType::Began)
+	TouchEvent::EType TouchType = (TouchEvent::EType)InTouchType;
+    // Ignore mouse move events when no button is pressed (hover events)
+    if (TouchType == TouchEvent::EType::Move && !bIsPanning && !bIsPinching)
     {
-        if (PointerIndex == 0)
-        {
-            // First finger - start pan if in empty space
-            if (IsPointInEmptySpace(WidgetPosition))
-            {
-                bIsPanning = true;
-                LastPanPosition = WidgetPosition;
-            }
-        }
-        else if (PointerIndex == 1 && bIsPanning)
-        {
-            // Second finger - start pinch
-            bIsPinching = true;
-            InitialPinchDistance = FVector2D::Distance(LastPanPosition, WidgetPosition);
-        }
-    }
-    else if (TouchType == ETouchType::Moved)
-    {
-        if (PointerIndex == 0 && bIsPanning)
-        {
-            // First finger - continue pan
-            FVector2D Delta = WidgetPosition - LastPanPosition;
-            ApplyPan(Delta);
-            LastPanPosition = WidgetPosition;
-        }
-        else if (PointerIndex == 1 && bIsPinching)
-        {
-            // Second finger - update pinch
-            float CurrentDistance = FVector2D::Distance(LastPanPosition, WidgetPosition);
-            float PinchDelta = (CurrentDistance - InitialPinchDistance) * 0.01f; // Scale factor
-            ApplyZoom(PinchDelta);
-            InitialPinchDistance = CurrentDistance;
-        }
-    }
-    else if (TouchType == ETouchType::Ended)
-    {
-        if (PointerIndex == 0)
-        {
-            bIsPanning = false;
-        }
-        else if (PointerIndex == 1)
-        {
-            bIsPinching = false;
-        }
+        return false;
     }
 
-    TouchEvent Evt;
-    Evt.Type = (TouchEvent::EType)TouchType;
-    Evt.Position = WidgetPosition;
-    Evt.TouchID = PointerIndex; 
+    UE_LOG(LogTemp, Log, TEXT("HandleMouseTap: Type=%d, Index=%d, Pos=(%.1f, %.1f)"), TouchType, PointerIndex, WidgetPosition.X, WidgetPosition.Y);
 
+    // Convert screen position to diagram space
     FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
     FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(WidgetPosition);
-    Evt.Position.X = VisTextureSize.X * WidgetPosition.X / ImageGeometry.GetLocalSize().X;
-    Evt.Position.Y = VisTextureSize.Y * WidgetPosition.Y / ImageGeometry.GetLocalSize().Y;
-    VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+    
+    // First convert to diagram space (0 to VisTextureSize)
+    FVector2D DiagramPosition = FVector2D(
+        VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
+        VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
+    );
+    
+    // Then apply inverse of view transform to get world position
+    FTransform2D ViewTransform(ViewScale, ViewOffset);
+    FTransform2D InverseViewTransform = ViewTransform.Inverse();
+    FVector2D WorldPosition = InverseViewTransform.TransformPoint(DiagramPosition);
+    
+    UE_LOG(LogTemp, Log, TEXT("  Diagram space: (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
+    UE_LOG(LogTemp, Log, TEXT("  World space: (%.1f, %.1f), ViewOffset=(%.1f, %.1f), ViewScale=%.2f"),
+           WorldPosition.X, WorldPosition.Y, ViewOffset.X, ViewOffset.Y, ViewScale);
+
+    // Use WorldPosition for all subsequent operations
+    auto j = VizManager->Junctions[0];
+    UE_LOG(LogTemp, Log, TEXT("  junction[0] is '%s' %.f, %.f, %.f, %.f"), *j->GetSystemName(), j->X, j->Y, j->W, j->H);
+
+    // Handle touch events for pinch-to-zoom
+    if (TouchType == TouchEvent::EType::Down)
+    {
+        // First check if we're over a junction
+        bool bOverJunction = false;
+        for (const auto& Junction : VizManager->Junctions)
+        {
+            if (Junction && Junction->IsPointNear(WorldPosition))  // Use WorldPosition here
+            {
+                bOverJunction = true;
+                break;
+            }
+        }
+
+        if (bOverJunction)
+        {
+            // Junction gets the grab
+            TouchEvent Evt;
+            Evt.Type = TouchEvent::EType::Down;
+            Evt.Position = WorldPosition;
+            Evt.TouchID = PointerIndex;
+            VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+            return true;  // Junction grabbed the event
+        }
+        else if (ActiveTouches.Num() == 0)
+        {
+            // Not over a junction, start pan if in empty space
+            ActiveTouches.Add(PointerIndex);
+            bool bInEmptySpace = IsPointInEmptySpace(WorldPosition);
+            UE_LOG(LogTemp, Log, TEXT("  Touch began: InEmptySpace=%d"), bInEmptySpace);
+            if (bInEmptySpace)
+            {
+                bIsPanning = true;
+                LastPanPosition = WorldPosition;  // Store in world space
+                UE_LOG(LogTemp, Log, TEXT("  Started panning from (%.1f, %.1f)"), LastPanPosition.X, LastPanPosition.Y);
+                return true;  // Pan mode grabbed the event
+            }
+        }
+        else if (ActiveTouches.Num() == 1 && bIsPanning)
+        {
+            ActiveTouches.Add(PointerIndex);
+            // Second finger - start pinch
+            bIsPinching = true;
+            InitialPinchDistance = FVector2D::Distance(LastPanPosition, WorldPosition);
+            UE_LOG(LogTemp, Log, TEXT("  Started pinching, initial distance=%.1f"), InitialPinchDistance);
+            return true;  // Pinch mode grabbed the event
+        }
+    }
+    else if (TouchType == TouchEvent::EType::Move)
+    {
+        if (PointerIndex == ActiveTouches[0] && bIsPanning)
+        {
+            // First finger - continue pan
+            FVector2D Delta = WorldPosition - LastPanPosition;
+            UE_LOG(LogTemp, Log, TEXT("  Panning: Delta=(%.1f, %.1f)"), Delta.X, Delta.Y);
+            ApplyPan(Delta);
+            LastPanPosition = WorldPosition;
+            return true;  // Pan mode has the grab
+        }
+        else if (PointerIndex == ActiveTouches[1] && bIsPinching)
+        {
+            // Second finger - update pinch
+            float CurrentDistance = FVector2D::Distance(LastPanPosition, WorldPosition);
+            float PinchDelta = (CurrentDistance - InitialPinchDistance) * 0.01f; // Scale factor
+            UE_LOG(LogTemp, Log, TEXT("  Pinching: Current=%.1f, Delta=%.2f"), CurrentDistance, PinchDelta);
+            ApplyZoom(PinchDelta);
+            InitialPinchDistance = CurrentDistance;
+            return true;  // Pinch mode has the grab
+        }
+    }
+    else if (TouchType == TouchEvent::EType::Up)
+    {
+		ActiveTouches.Remove(PointerIndex);
+        if (ActiveTouches.Num() == 0)
+        {
+            UE_LOG(LogTemp, Log, TEXT("  Touch ended: WasPanning=%d"), bIsPanning);
+            bIsPanning = false;
+            return true;  // Release pan grab
+        }
+        else if (ActiveTouches.Num() == 1)
+        {
+            UE_LOG(LogTemp, Log, TEXT("  Touch ended: WasPinching=%d"), bIsPinching);
+            bIsPinching = false;
+            return true;  // Release pinch grab
+        }
+    }
+
+    // If we get here, either:
+    // 1. This is a hover event (already filtered out)
+    // 2. This is a move/end event for a pointer that doesn't have a grab
+    // 3. This is a begin event that didn't result in a grab
+    return false;
 }
 
 void AVisualTestHarnessActor::OnZoomInTriggered(const FInputActionValue& Value)
@@ -565,10 +632,19 @@ void AVisualTestHarnessActor::OnPanStarted(const FInputActionValue& Value)
     if (Value.GetValueType() == EInputActionValueType::Axis2D)
     {
         FVector2D Position = Value.Get<FVector2D>();
-        if (IsPointInEmptySpace(Position))
+        FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
+        FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(Position);
+        
+        // Convert to diagram space
+        FVector2D DiagramPosition = FVector2D(
+            VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
+            VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
+        );
+        
+        if (IsPointInEmptySpace(DiagramPosition))
         {
             bIsPanning = true;
-            LastPanPosition = Position;
+            LastPanPosition = DiagramPosition;
         }
     }
 }
@@ -578,9 +654,18 @@ void AVisualTestHarnessActor::OnPanTriggered(const FInputActionValue& Value)
     if (bIsPanning && Value.GetValueType() == EInputActionValueType::Axis2D)
     {
         FVector2D CurrentPosition = Value.Get<FVector2D>();
-        FVector2D Delta = CurrentPosition - LastPanPosition;
+        FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
+        FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(CurrentPosition);
+        
+        // Convert to diagram space
+        FVector2D DiagramPosition = FVector2D(
+            VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
+            VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
+        );
+        
+        FVector2D Delta = DiagramPosition - LastPanPosition;
         ApplyPan(Delta);
-        LastPanPosition = CurrentPosition;
+        LastPanPosition = DiagramPosition;
     }
 }
 
@@ -601,27 +686,36 @@ void AVisualTestHarnessActor::OnZoomOutButtonClicked()
 
 void AVisualTestHarnessActor::ApplyZoom(float Delta)
 {
+    UE_LOG(LogTemp, Log, TEXT("ApplyZoom: Delta=%.2f, CurrentScale=%.2f"), Delta, ViewScale);
     float NewScale = FMath::Clamp(ViewScale + Delta, MinZoom, MaxZoom);
     ViewScale = NewScale;
+    UE_LOG(LogTemp, Log, TEXT("  New scale=%.2f"), ViewScale);
 }
 
 void AVisualTestHarnessActor::ApplyPan(const FVector2D& Delta)
 {
+    UE_LOG(LogTemp, Log, TEXT("ApplyPan: Delta=(%.1f, %.1f), CurrentOffset=(%.1f, %.1f), Scale=%.2f"),
+           Delta.X, Delta.Y, ViewOffset.X, ViewOffset.Y, ViewScale);
     ViewOffset += Delta / ViewScale; // Scale the pan delta by the current zoom level
+    UE_LOG(LogTemp, Log, TEXT("  New offset=(%.1f, %.1f)"), ViewOffset.X, ViewOffset.Y);
 }
 
-bool AVisualTestHarnessActor::IsPointInEmptySpace(const FVector2D& Point) const
+bool AVisualTestHarnessActor::IsPointInEmptySpace(const FVector2D& WorldPoint) const
 {
-    if (!VizManager) return false;
+    if (!VizManager)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("IsPointInEmptySpace: VizManager is null"));
+        return false;
+    }
 
-    // Convert screen point to world space
-    FVector2D WorldPoint = (Point - ViewOffset) / ViewScale;
+    UE_LOG(LogTemp, Log, TEXT("IsPointInEmptySpace: Checking point (%.1f, %.1f)"), WorldPoint.X, WorldPoint.Y);
 
-    // Check if the point is near any junction or segment
+    // WorldPoint is already in world space, no need to transform
     for (const auto& Junction : VizManager->Junctions)
     {
         if (Junction && Junction->IsPointNear(WorldPoint))
         {
+            UE_LOG(LogTemp, Log, TEXT("  Point is near junction %s"), *Junction->GetSystemName());
             return false;
         }
     }
@@ -630,10 +724,12 @@ bool AVisualTestHarnessActor::IsPointInEmptySpace(const FVector2D& Point) const
     {
         if (Segment && Segment->IsPointNear(WorldPoint))
         {
+            UE_LOG(LogTemp, Log, TEXT("  Point is near segment %s"), *Segment->GetName());
             return false;
         }
     }
 
+    UE_LOG(LogTemp, Log, TEXT("  Point is in empty space"));
     return true;
 }
 

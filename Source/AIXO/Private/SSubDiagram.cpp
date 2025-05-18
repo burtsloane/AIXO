@@ -3,7 +3,7 @@
 #include "Rendering/DrawElements.h"   // FSlateDrawElement & friends
 #include "Rendering/SlateRenderBatch.h"  // (optional) only if you really need FSlateRenderBatch
 #include "RHIStaticStates.h"          // Sampler states etc.
-#include "VisualTestHarnessActor.h"
+#include "../Public/VisualTestHarnessActor.h"   // Use relative path
 #include "DiagramVertex.h"
 #include "Slate/SlateBrushAsset.h"
 #include "Styling/CoreStyle.h"     // FCoreStyle::Get()
@@ -34,8 +34,8 @@ VisualizationManager → builds WorkingVertices & WorkingIndices
 EndDrawing() swaps to Presented* (double‑buffer)
 SSubDiagram::OnPaint() batch‑flushes by Page, applies AccumulatedRenderTransform, uses MakeCustomVerts.
 	•	Texture scheme:
-Page 255 = opaque 1×1 white brush for solid UI elements.
-Page 0…N come from UFont::Textures of the imported bitmap font.
+Page 255 = opaque 1×1 white brush for solid UI elements.
+Page 0…N come from UFont::Textures of the imported bitmap font.
 Vertex struct now has uint8 Page.
 	•	Input: NativeWidgetHost passes pointer & touch directly to SSubDiagram. Widget exposes OnMouse* + OnTouch* and hands local‑space coords back to AVisualTestHarnessActor::HandleMouseTap(). Multi‑touch distinguished by PointerIndex.
 	•	Remaining TODOs flagged in code:
@@ -57,11 +57,11 @@ int32 SSubDiagram::OnPaint( const FPaintArgs& Args,
                             const FWidgetStyle& Style,
                             bool ParentEnabled ) const
 {
-//	UE_LOG(LogTemp, Log, TEXT("OnPaint verts=%d indices=%d"),
-//		   CpuVerts ? CpuVerts->Num() : -1,
-//		   CpuIndices ? CpuIndices->Num() : -1);
-
-    if (!CpuVerts || !CpuIndices) return LayerId;
+    if (!CpuVerts || !CpuIndices || CpuVerts->Num() == 0 || CpuIndices->Num() == 0) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SSubDiagram::OnPaint: Invalid vertex/index data"));
+        return LayerId;
+    }
 
     /* ------------------------------------------------------------
      * Clip all custom verts to the widget's allotted geometry
@@ -80,84 +80,99 @@ int32 SSubDiagram::OnPaint( const FPaintArgs& Args,
         FLinearColor::White);
 
     ++LayerId;   // diagram will be painted above the background
-	//
-	UFont* Font = Cast<UFont>(TinyFontPath.TryLoad());
-	if (!Font || !CpuVerts || !CpuIndices) return LayerId;
 
-	// ───────── resource handle cache ─────────
-	TArray<FSlateResourceHandle> PageHandles;
-	PageHandles.SetNum(Font->Textures.Num());
+    UFont* Font = Cast<UFont>(TinyFontPath.TryLoad());
+    if (!Font) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("SSubDiagram::OnPaint: Font not found"));
+        return LayerId;
+    }
 
-	for (int32 i = 0; i < Font->Textures.Num(); ++i)
-	{
-		FSlateBrush TempBrush;
-		TempBrush.DrawAs = ESlateBrushDrawType::Image;               // ensure Slate treats it as a texture
-		TempBrush.SetResourceObject(Font->Textures[i]);
-		TempBrush.ImageSize =
-			FVector2D(Font->Textures[i]->GetSizeX(), Font->Textures[i]->GetSizeY());
-		TempBrush.TintColor = FLinearColor::White;                   // no tint
+    // ───────── resource handle cache ─────────
+    TArray<FSlateResourceHandle> PageHandles;
+    PageHandles.SetNum(Font->Textures.Num());
 
-		PageHandles[i] = FSlateApplication::Get()
-						   .GetRenderer()->GetResourceHandle(TempBrush);
-	}
+    for (int32 i = 0; i < Font->Textures.Num(); ++i)
+    {
+        if (!Font->Textures[i]) continue;
+        
+        FSlateBrush TempBrush;
+        TempBrush.DrawAs = ESlateBrushDrawType::Image;
+        TempBrush.SetResourceObject(Font->Textures[i]);
+        TempBrush.ImageSize = FVector2D(Font->Textures[i]->GetSizeX(), Font->Textures[i]->GetSizeY());
+        TempBrush.TintColor = FLinearColor::White;
 
-	FSlateResourceHandle WhiteHandle =
-		FSlateApplication::Get().GetRenderer()->GetResourceHandle(*WhiteBrush);
+        PageHandles[i] = FSlateApplication::Get().GetRenderer()->GetResourceHandle(TempBrush);
+    }
 
-	// ───────── batching ─────────
-	uint8 CurrentPage = 255;
-	FSlateResourceHandle CurrentHandle;
-	TArray<FSlateVertex> Verts;
-	TArray<SlateIndex>   Indices;
+    FSlateResourceHandle WhiteHandle = FSlateApplication::Get().GetRenderer()->GetResourceHandle(*WhiteBrush);
 
-	auto FlushBatch = [&]()
-	{
-		if (Verts.Num() == 0) return;
-		FSlateDrawElement::MakeCustomVerts(
-			OutDraw, LayerId, CurrentHandle, Verts, Indices, nullptr, 0, 0);
-		Verts.Reset();
-		Indices.Reset();
-	};
+    // ───────── batching ─────────
+    uint8 CurrentPage = 255;
+    FSlateResourceHandle CurrentHandle;
+    TArray<FSlateVertex> Verts;
+    TArray<SlateIndex>   Indices;
 
-	const FSlateRenderTransform& Acc = Allotted.GetAccumulatedRenderTransform();
+    auto FlushBatch = [&]()
+    {
+        if (Verts.Num() == 0) return;
+        FSlateDrawElement::MakeCustomVerts(
+            OutDraw, LayerId, CurrentHandle, Verts, Indices, nullptr, 0, 0);
+        Verts.Reset();
+        Indices.Reset();
+    };
 
-	auto PushVert = [&](const FDiagramVertex& D)->uint32
-	{
-		FSlateVertex SV;
-		SV.Position = Acc.TransformPoint(D.Pos);
-		SV.Color    = D.Col;
-		SV.TexCoords[0] = D.UV.X; SV.TexCoords[1] = D.UV.Y;
-		SV.TexCoords[2] = 1.f;    SV.TexCoords[3] = 1.f;
-		SV.MaterialTexCoords = FVector2f::ZeroVector;
-		Verts.Add(SV);
-		return Verts.Num() - 1;
-	};
+    const FSlateRenderTransform& Acc = Allotted.GetAccumulatedRenderTransform();
 
-	// walk triangles in index buffer order
-	for (int32 i = 0; i < CpuIndices->Num(); i += 3)
-	{
-		const FDiagramVertex& D = (*CpuVerts)[ (*CpuIndices)[i] ];
+    auto PushVert = [&](const FDiagramVertex& D)->uint32
+    {
+        FSlateVertex SV;
+        SV.Position = Acc.TransformPoint(D.Pos);
+        SV.Color    = D.Col;
+        SV.TexCoords[0] = D.UV.X; SV.TexCoords[1] = D.UV.Y;
+        SV.TexCoords[2] = 1.f;    SV.TexCoords[3] = 1.f;
+        SV.MaterialTexCoords = FVector2f::ZeroVector;
+        Verts.Add(SV);
+        return Verts.Num() - 1;
+    };
 
-		uint8 Page = D.Page;
-		if (Page != CurrentPage)
-		{
-			FlushBatch();
-			CurrentPage  = Page;
-			if (PageHandles.IsValidIndex(Page)) {
-				CurrentHandle = PageHandles[Page];
-			} else {
-				CurrentHandle = WhiteHandle;
-			}
-		}
+    // walk triangles in index buffer order
+    for (int32 i = 0; i < CpuIndices->Num(); i += 3)
+    {
+        // Safety check: ensure we have enough indices for a complete triangle
+        if (i + 2 >= CpuIndices->Num()) break;
 
-		uint32 ia = PushVert( (*CpuVerts)[ (*CpuIndices)[i   ] ] );
-		uint32 ib = PushVert( (*CpuVerts)[ (*CpuIndices)[i+1 ] ] );
-		uint32 ic = PushVert( (*CpuVerts)[ (*CpuIndices)[i+2 ] ] );
-		Indices.Append({ia, ib, ic});
-	}
+        // Get indices and validate they're in bounds
+        uint32 idx0 = (*CpuIndices)[i];
+        uint32 idx1 = (*CpuIndices)[i + 1];
+        uint32 idx2 = (*CpuIndices)[i + 2];
 
-	FlushBatch();          // final page
-    OutDraw.PopClip();          // end clipping zone
+        if (idx0 >= (uint32)CpuVerts->Num() || 
+            idx1 >= (uint32)CpuVerts->Num() || 
+            idx2 >= (uint32)CpuVerts->Num())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("SSubDiagram::OnPaint: Index out of bounds: %d, %d, %d (max: %d)"), 
+                   idx0, idx1, idx2, CpuVerts->Num());
+            continue;
+        }
+
+        const FDiagramVertex& D = (*CpuVerts)[idx0];
+        uint8 Page = D.Page;
+        if (Page != CurrentPage)
+        {
+            FlushBatch();
+            CurrentPage = Page;
+            CurrentHandle = PageHandles.IsValidIndex(Page) ? PageHandles[Page] : WhiteHandle;
+        }
+
+        uint32 ia = PushVert((*CpuVerts)[idx0]);
+        uint32 ib = PushVert((*CpuVerts)[idx1]);
+        uint32 ic = PushVert((*CpuVerts)[idx2]);
+        Indices.Append({ia, ib, ic});
+    }
+
+    FlushBatch();          // final page
+    OutDraw.PopClip();     // end clipping zone
     return LayerId;
 }
 
@@ -177,17 +192,22 @@ FVector2D SSubDiagram::ComputeDesiredSize(float) const
     return FVector2D(100.f, 100.f);
 }
 
+bool bIsGrabbed = false;
+int32 GrabbedPointerIndex = -1;
+
 FReply SSubDiagram::OnMouseButtonDown(
     const FGeometry& MyGeom, const FPointerEvent& MouseEvent)
 {
-    if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bIsGrabbed)
     {
-        bMouseDownInside = true;
-        // Translate to diagram space
         const FVector2f Local = MyGeom.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
-//UE_LOG(LogTemp, Log, TEXT("Mouse down at %s"), *Local.ToString());
-        Owner->HandleMouseTap(FVector2D(Local), 1, MouseEvent.GetPointerIndex());
-        return FReply::Handled().CaptureMouse(SharedThis(this));
+        // Let the owner decide if this should be grabbed
+        if (Owner->HandleMouseTap(FVector2D(Local), 1, MouseEvent.GetPointerIndex()))
+        {
+            bIsGrabbed = true;
+            GrabbedPointerIndex = MouseEvent.GetPointerIndex();
+            return FReply::Handled().CaptureMouse(SharedThis(this));
+        }
     }
     return FReply::Unhandled();
 }
@@ -195,13 +215,13 @@ FReply SSubDiagram::OnMouseButtonDown(
 FReply SSubDiagram::OnMouseButtonUp(
     const FGeometry& MyGeom, const FPointerEvent& MouseEvent)
 {
-    if (bMouseDownInside &&
+    if (bIsGrabbed && MouseEvent.GetPointerIndex() == GrabbedPointerIndex &&
         MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
-        bMouseDownInside = false;
         const FVector2f Local = MyGeom.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
-//UE_LOG(LogTemp, Log, TEXT("Mouse up at %s"), *Local.ToString());
         Owner->HandleMouseTap(FVector2D(Local), 3, MouseEvent.GetPointerIndex());
+        bIsGrabbed = false;
+        GrabbedPointerIndex = -1;
         return FReply::Handled().ReleaseMouseCapture();
     }
     return FReply::Unhandled();
@@ -210,7 +230,7 @@ FReply SSubDiagram::OnMouseButtonUp(
 FReply SSubDiagram::OnMouseMove(
     const FGeometry& MyGeom, const FPointerEvent& MouseEvent)
 {
-    if (HasMouseCapture())
+    if (bIsGrabbed && MouseEvent.GetPointerIndex() == GrabbedPointerIndex)
     {
         const FVector2f Local = MyGeom.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
         Owner->HandleMouseTap(FVector2D(Local), 2, MouseEvent.GetPointerIndex());

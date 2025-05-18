@@ -36,6 +36,41 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
         // PublicIncludePaths.Add(Path.Combine(LlamaCppSourcePath, "include", "common"));
 
 
+
+        if (Target.Platform == UnrealTargetPlatform.IOS)
+        {
+            // Add iOS-specific dependencies
+            PublicDependencyModuleNames.AddRange(
+                new string[]
+                {
+                    "ApplicationCore",
+                    "Launch"
+                }
+            );
+
+            // Add iOS-specific frameworks
+            PublicFrameworks.AddRange(
+                new string[]
+                {
+                    "Foundation",
+                    "UIKit",
+                    "CoreGraphics"
+                }
+            );
+
+            // Add iOS-specific compiler flags
+//            PublicAdditionalCompilerArguments += " -DIOS=1";
+            
+            // Add iOS-specific linker flags
+//            PublicAdditionalLinkerArguments += " -framework Metal";
+
+            PublicDefinitions.Add("WITH_METAL=1");
+
+			PublicFrameworks.Add("Network");		// from BB
+        }
+
+
+
         // --- Platform-Specific Settings ---
         if (Target.Platform == UnrealTargetPlatform.Mac)
         {

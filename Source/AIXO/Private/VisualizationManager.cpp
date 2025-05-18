@@ -5,6 +5,12 @@
 // #include "RenderingContext.h" // REMOVE THIS
 #include "IVisualElement.h" // Includes RenderingContext definition
 #include "CommandDistributor.h"
+#include "LlamaComponent.h"          // For friend declaration
+#include "VisualTestHarnessActor.h"  // For friend declaration
+
+// Add friend declarations at the top of the file
+//class AVisualTestHarnessActor;
+//class ULlamaComponent;
 
 VisualizationManager::VisualizationManager()
 {

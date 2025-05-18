@@ -6,6 +6,13 @@ public class AIXO : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
+		// Configure for monolithic builds
+		bUsePrecompiled = false;  // Ensure we're not using precompiled
+		bEnableUndefinedIdentifierWarnings = false;  // Reduce noise in monolithic builds
+	
+		// Allow this module to be included in precompiled builds
+		PrecompileForTargets = PrecompileTargetsType.Any;
+
 		PublicDependencyModuleNames.AddRange(new string[] { 
 			"Core", 
 			"CoreUObject", 
@@ -18,7 +25,7 @@ public class AIXO : ModuleRules
 			"Json",
             "JsonUtilities",
             "EnhancedInput",
-			"UELlama"
+            "UELlama"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });

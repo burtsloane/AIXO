@@ -5,7 +5,6 @@
 #include "SubmarineState.h"
 #include "SSubDiagram.h"
 #include "CommandDistributor.h"
-#include "VisualizationManager.h"
 #include "UnrealRenderingContext.h"
 #include "Components/Image.h" // For UImage
 #include "Components/NativeWidgetHost.h"
@@ -24,6 +23,7 @@ class UTexture2D;
 class UInputMappingContext;
 class UInputAction;
 class ULlamaComponent;
+class VisualizationManager;
 struct FInputActionValue;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHarnessAndLlamaReady, ULlamaComponent*, LlamaComponent);
@@ -36,6 +36,7 @@ class AIXO_API AVisualTestHarnessActor : public AActor
 public:	
 	// Sets default values for this actor's properties
 	AVisualTestHarnessActor();
+	virtual ~AVisualTestHarnessActor() override;  // Add virtual destructor
 
 protected:
 	// Called when the game starts or when spawned
@@ -51,7 +52,7 @@ public:
 
 	// Core systems
     CommandDistributor CmdDistributor; // Manages command handlers
-	TUniquePtr<VisualizationManager> VizManager; // Manages visual elements
+	VisualizationManager* VizManager; // Changed from TUniquePtr to raw pointer
     TUniquePtr<UnrealRenderingContext> RenderContext; // Handles drawing
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Submarine")
@@ -140,19 +141,17 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UButton> ZoomOutButton;
 
-	// Initialization functions
+	// Initialization functions - moved to cpp
 	void CreateWidgetAndGetReferences();
 	void InitializeCommandHandlers();
 	void InitializeTestSystems();
 	void InitializeVisualization();
-	// Reverted: Remove JSON init function declaration
-	// void InitializeGridFromJSON(); 
 
-	// UI Update and Logging
+	// UI Update and Logging - moved to cpp
 	void UpdateStateDisplay();
 	void AddLogMessage(const FString& Message);
 
-	// UI Event Handlers
+	// UI Event Handlers - moved to cpp
 	UFUNCTION()
 	void OnSendCommandClicked();
 
@@ -160,27 +159,20 @@ protected:
 	void OnCommandTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
 	UFUNCTION(BlueprintCallable)
-	void HandleMouseTap(const FVector2D& WidgetPosition, int32 TouchType, int32 PointerIndex);
+	bool HandleMouseTap(const FVector2D& WidgetPosition, int32 TouchType, int32 PointerIndex);
 
-
-#ifdef never
-	void HandleVisualizationTap(const FVector2D& ScreenPosition, TouchEvent::EType TouchType, int32 PointerIndex);
-	// Input Action Handlers
-	void OnVisInteractTriggered(const FInputActionValue& Value);
-#endif // never
-
-	// Helper for grid setup (kept for reference, but should be removed after JSON transition)
+	// Helper for grid setup - moved to cpp
 	void MakeConnectingSegment(const FString& Name, ICH_PowerJunction *JCT, int32 JCT_side, int32 JCT_offset, ICH_PowerJunction *SS, int32 SS_side, int32 SS_offset);
 
 public:
-	// Command processing passthrough
+	// Command processing passthrough - moved to cpp
 	UFUNCTION(BlueprintCallable, Category = "Commands")
 	void ProcessCommandString(const FString& Command);
 
     UPROPERTY(BlueprintAssignable, Category = "AIXO")
     FOnHarnessAndLlamaReady OnHarnessAndLlamaReady;
     
-	// State query passthrough
+	// State query passthrough - moved to cpp
 	UFUNCTION(BlueprintCallable, Category = "Commands")
 	TArray<FString> GetAvailableCommandsList();
 
@@ -191,13 +183,13 @@ public:
 	TArray<FString> GetSystemNotifications();
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AIXO Components", meta = (AllowPrivateAccess = "true"))
-    TObjectPtr<ULlamaComponent> LlamaAIXOComponent; // Use TObjectPtr for modern UE
+    TObjectPtr<ULlamaComponent> LlamaAIXOComponent;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
-    FString PathToModel; // Renamed from pathToModel
+    FString PathToModel;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
-    FString SystemPromptText; // Renamed from prompt
+    FString SystemPromptText;
 
 private:
 	// Hold loaded junctions/segments alive when JSON is imported
@@ -206,29 +198,29 @@ private:
 
 public:
 	UPROPERTY(EditDefaultsOnly, Category="UI")
-	UFont* TinyFont = nullptr;          // assign in the editor
+	UFont* TinyFont = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="UI")
-	UFont* SmallFont = nullptr;          // assign in the editor
+	UFont* SmallFont = nullptr;
 
 	friend class SSubDiagram;
 	friend class ULlamaComponent;
 
-	// Input handlers
+	// Input handlers - moved to cpp
 	void OnZoomInTriggered(const FInputActionValue& Value);
 	void OnZoomOutTriggered(const FInputActionValue& Value);
 	void OnPanTriggered(const FInputActionValue& Value);
 	void OnPanStarted(const FInputActionValue& Value);
 	void OnPanCompleted(const FInputActionValue& Value);
 
-	// UI event handlers for zoom buttons
+	// UI event handlers for zoom buttons - moved to cpp
 	UFUNCTION()
 	void OnZoomInButtonClicked();
 
 	UFUNCTION()
 	void OnZoomOutButtonClicked();
 
-	// Helper functions
+	// Helper functions - moved to cpp
 	void ApplyZoom(float Delta);
 	void ApplyPan(const FVector2D& Delta);
 	bool IsPointInEmptySpace(const FVector2D& Point) const;
@@ -238,4 +230,7 @@ public:
 	FVector2D LastPanPosition;
 	float InitialPinchDistance = 0.0f;
 	bool bIsPinching = false;
+	TArray<int32> ActiveTouches;	// for now just IDs, later maybe saved X, Y
+
+    friend class VisualizationManager;
 }; 

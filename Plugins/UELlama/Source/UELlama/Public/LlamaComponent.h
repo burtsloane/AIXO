@@ -10,6 +10,7 @@
 #include <functional>
 #include <mutex>
 #include "llama.h"
+//#include "VisualTestHarnessActor.h"
 
 #include "ContextVisualizationData.h"
 
