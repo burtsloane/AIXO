@@ -82,6 +82,8 @@ AVisualTestHarnessActor::AVisualTestHarnessActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+    InputComponent = CreateDefaultSubobject<UEnhancedInputComponent>(TEXT("EnhancedInputComponent"));
+
     // Create the SubmarineState UObject
     if (!SubmarineState) {
         SubmarineState = CreateDefaultSubobject<ASubmarineState>(TEXT("SubmarineStateInstance"));
