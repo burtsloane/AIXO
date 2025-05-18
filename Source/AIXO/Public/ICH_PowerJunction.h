@@ -601,4 +601,5 @@ public:
     friend class PWR_PowerPropagation;
     friend class VisualizationManager;
     friend class UPowerGridLoader;
+    friend class ULlamaComponent;
 };

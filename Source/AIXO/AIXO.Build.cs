@@ -17,7 +17,8 @@ public class AIXO : ModuleRules
 			"SlateCore",
 			"Json",
             "JsonUtilities",
-            "EnhancedInput"
+            "EnhancedInput",
+			"UELlama"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });

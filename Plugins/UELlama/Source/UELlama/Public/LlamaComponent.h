@@ -1,4 +1,4 @@
-// 2023 (c) Mika Pi
+// LLamaComponent.h
 #pragma once
 
 #include <Components/ActorComponent.h>
@@ -11,9 +11,13 @@
 #include <mutex>
 #include "llama.h"
 
-#include "VisualTestHarnessActor.h"
+#include "ContextVisualizationData.h"
 
 #include "LlamaComponent.generated.h"
+
+//#define TRACK_PARALLEL_CONTEXT_TOKENS
+
+class AVisualTestHarnessActor;
 
 using namespace std;
 
@@ -82,11 +86,11 @@ namespace Internal
     class Llama
     {
     public:
-        Llama();
+	    Llama(ULlamaComponent* InOwningComponent); // NEW: Constructor takes owner
         ~Llama();
 
         // MODIFIED/NEW API for Llama thread
-        void InitializeLlama_LlamaThread(const FString& ModelPath, const FString& InitialSystemPrompt /*, other params */);
+        void InitializeLlama_LlamaThread(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq /*, other params */);
         void ShutdownLlama_LlamaThread();
         void UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockType, const FString& NewTextContent);
         void ProcessInputAndGenerate_LlamaThread(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
@@ -94,11 +98,16 @@ namespace Internal
 		std::string AssembleFullContextForDump();
 		void DetokenizeAndAppend(std::string& TargetString, const std::vector<llama_token>& TokensToDetokenize, const llama_model* ModelHandle);
 		std::string CleanString(std::string p_str);
+		void RebuildFlatConversationHistoryTokensFromStructured();
+		void BroadcastContextVisualUpdate_LlamaThread();
 
         std::function<void(FString)> tokenCb;
         std::function<void(FString)> fullContextDumpCb;
-        std::function<void(FString)> toolCallCb; // NEW: For tool calls
-        std::function<void(FString)> errorCb;    // NEW: For errors
+        std::function<void(FString)> toolCallCb; // For tool calls
+        std::function<void(FString)> errorCb;    // For errors
+        std::function<void(float)> progressCb;   // For loading
+        std::function<void(FString)> readyCb;    // For ready
+        std::function<void(const FContextVisPayload&)> contextChangedCb;    // For context change update
 
     private:
         // --- Core Llama State ---
@@ -109,6 +118,7 @@ namespace Internal
         llama_sampler* sampler_chain_instance = nullptr;
         const llama_vocab* vocab = nullptr;
         int32_t n_ctx_from_model = 0; // Actual context window size
+	    ULlamaComponent* OwningLlamaComponentPtr; // Member to store the owner
 
         // --- Context Block Management (Llama Thread Owned) ---
         struct FTokenizedContextBlock {
@@ -118,6 +128,11 @@ namespace Internal
         TMap<ELlamaContextBlockType, FTokenizedContextBlock> FixedContextBlocks;
         std::vector<llama_token> ConversationHistoryTokens; // Single flat list of tokens for conversation
         std::vector<llama_token> CurrentHighFrequencyStateTokens; // Tokens for the HFS of the *current* turn
+
+#ifdef TRACK_PARALLEL_CONTEXT_TOKENS
+		void DebugContext(const FString &Message);
+#endif // TRACK_PARALLEL_CONTEXT_TOKENS
+		std::vector<llama_token> MirroredKvCacheTokens;			// for debugging
 
         int32_t kv_cache_token_cursor = 0; // Tracks how many tokens are currently valid in the KV cache from the start of the logical sequence.
                                            // This is our primary way to manage n_past effectively.
@@ -147,8 +162,8 @@ private:
 
         // --- Helper Methods (Llama Thread) ---
         void ThreadRun_LlamaThread(); // Renamed for clarity
-        void TokenizeAndStoreFixedBlock(ELlamaContextBlockType BlockType, const FString& Text, bool bIsSystemPrompt);
-        void AssembleFullPromptForTurn(const std::vector<llama_token>& NewInputTokens, std::vector<llama_token>& OutFullPromptTokens);
+		void _TokenizeAndStoreFixedBlockInternal(ELlamaContextBlockType BlockType, const FString& Text, bool bAddBosForThisBlock);
+        void AssembleFullPromptForTurn(const FString& CurrentInputOriginalTextFStr, const FString& InputTypeHint, std::vector<llama_token>& OutFullPromptTokens);
         void DecodeTokensAndSample(std::vector<llama_token>& TokensToDecode, bool bIsFinalPromptTokenLogits);
         void AppendTurnToStructuredHistory(const FString& Role, const std::vector<llama_token>& Tokens);
         void PruneConversationHistory(); // Manages StructuredConversationHistory and ConversationHistoryTokens
@@ -168,6 +183,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewTokenGenerated, FString, NewTo
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFullContextDumpReady, const FString&, ContextDump);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnToolCallDetected, const FString&, ToolCallJson);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaErrorOccurred, const FString&, ErrorMessage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaLoadingProgressDelegate, float, Progress);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaReady, const FString&, ReadyMessage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaContextChangedDelegate, const FContextVisPayload&, ContextMessage);
 
 
 UCLASS(Category = "LLM", BlueprintType, meta = (BlueprintSpawnableComponent))
@@ -184,19 +202,32 @@ public:
                                ELevelTick TickType,
                                FActorComponentTickFunction* ThisTickFunction) override;
 
+	void ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor);
+	void ForwardContextUpdateToGameThread(const FContextVisPayload& Payload);
+
+    // Delegates
     UPROPERTY(BlueprintAssignable)
     FOnNewTokenGenerated OnNewTokenGenerated;
 
     UPROPERTY(BlueprintAssignable, Category = "Llama|Debug")
     FOnFullContextDumpReady OnFullContextDumpReady;
 
-    // NEW Delegates
     UPROPERTY(BlueprintAssignable, Category = "Llama")
     FOnToolCallDetected OnToolCallDetected;
 
     UPROPERTY(BlueprintAssignable, Category = "Llama")
     FOnLlamaErrorOccurred OnLlamaErrorOccurred;
 
+    UPROPERTY(BlueprintAssignable, Category = "Llama")
+    FOnLlamaLoadingProgressDelegate OnLlamaLoadingProgressDelegate;
+
+    UPROPERTY(BlueprintAssignable, Category = "Llama")
+    FOnLlamaReady OnLlamaReady;
+
+    UPROPERTY(BlueprintAssignable, Category = "Llama")
+    FOnLlamaContextChangedDelegate OnLlamaContextChangedDelegate;
+
+	//
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
     FString PathToModel; // Renamed from pathToModel
@@ -219,4 +250,10 @@ public:
 
 private:
     std::unique_ptr<Internal::Llama> LlamaInternal; // Renamed from llama
+	AVisualTestHarnessActor* HarnessActor;
+    bool bIsLlamaCoreReady = false; // Set by callback from Llama thread
+	FString SystemsContextBlockRecent;
+	FString LowFreqContextBlockRecent;
+	FString MakeSystemsBlock();
+	FString MakeStatusBlock();
 };

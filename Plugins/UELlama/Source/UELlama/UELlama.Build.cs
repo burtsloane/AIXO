@@ -12,14 +12,18 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
             "Core",
             "CoreUObject",
             "Engine",
-            "Projects" // Often needed for plugin utilities
+            "Projects",   // Often needed for plugin utilities
+            "UMG",        // For UUserWidget and UMG functionalities
+            "Slate",      // For SWidget and higher-level Slate functionalities
+            "SlateCore"   // For core Slate types like SLeafWidget, EVisibility, brushes, etc.
         });
 
         // Private dependencies (if any specific to the plugin's implementation details)
         PrivateDependencyModuleNames.AddRange(new string[] {
             // "Slate", "SlateCore", // Add if your plugin uses Slate UI directly
         });
-		PrivateDependencyModuleNames.AddRange(new string[] { "AIXO" /* Add your game module name here */ });
+//		PrivateDependencyModuleNames.AddRange(new string[] { "AIXO" /* Add your game module name here */ });
+		PrivateIncludePathModuleNames.AddRange(new string[] { "AIXO" });
 
         // Define the base path to your ThirdParty llama.cpp directory
         string ThirdPartyPath = Path.Combine(ModuleDirectory, "ThirdParty");

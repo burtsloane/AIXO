@@ -92,6 +92,25 @@ public:
     /**
      * Retrieves all available commands from all handlers, including system names.
      */
+    TArray<FString> GetAvailableQueries() const
+    {
+        TArray<FString> AllQueries;
+        for (const ICommandHandler* Handler : CommandHandlers)
+        {
+            if (Handler)
+            {
+                TArray<FString> HandlerQueries = Handler->GetAvailableQueries();
+                for (FString& Cmd : HandlerQueries)
+                {
+                    Cmd = Handler->GetSystemName() + "." + Cmd;
+                }
+                AllQueries.Append(HandlerQueries);
+            }
+        }
+        AllQueries.Add(TEXT("End of available Queries"));
+        return AllQueries;
+    }
+
     TArray<FString> GetAvailableCommands() const
     {
         TArray<FString> AllCommands;
@@ -186,6 +205,8 @@ public:
         HandlerMap.Empty();
         Segments.Empty();
     }
+    
+	friend class ULlamaComponent;
 };
 
 

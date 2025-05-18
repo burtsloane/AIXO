@@ -48,4 +48,5 @@ public:
 	ICH_PowerJunction* ClickedOnJunction;
 
     friend class AVisualTestHarnessActor;
+    friend class ULlamaComponent;
 }; 

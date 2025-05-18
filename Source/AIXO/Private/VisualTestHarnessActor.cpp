@@ -74,6 +74,8 @@
 #include "UPowerGridLoader.h" // Need this again for the generation call
 #include "HAL/PlatformFileManager.h" // Required for directory creation
 
+#include "LlamaComponent.h"
+
 const bool bGenerateJson = true;   // ←‑‑ set to false to load, true to generate JSON
 
 AVisualTestHarnessActor::AVisualTestHarnessActor()
@@ -95,6 +97,10 @@ AVisualTestHarnessActor::AVisualTestHarnessActor()
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to find /Engine/EngineResources/WhiteSquareTexture!"));
     }
+    
+    LlamaAIXOComponent = CreateDefaultSubobject<ULlamaComponent>(TEXT("LlamaAIXOComponentInstance"));
+    LlamaAIXOComponent->PathToModel = PathToModel;
+    LlamaAIXOComponent->SystemPromptText = SystemPromptText;
 }
 
 void AVisualTestHarnessActor::BeginPlay()
@@ -183,6 +189,21 @@ void AVisualTestHarnessActor::BeginPlay()
     InitializeTestSystems();
     InitializeVisualization();
 	if (VizManager) VizManager->ClearSelections();
+	
+    if (LlamaAIXOComponent)
+    {
+        // Call your custom initialization function on the component
+        LlamaAIXOComponent->ActivateLlamaComponent(this); // Pass 'this' (the harness actor)
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("AVisualTestHarnessActor: LlamaAIXOComponent is null in BeginPlay! Check constructor or Blueprint setup."));
+    }
+
+	if (LlamaAIXOComponent /*&& LlamaAIXOComponent->IsLlamaCoreReady()*/) // Assuming IsLlamaCoreReady flag
+	{
+		OnHarnessAndLlamaReady.Broadcast(LlamaAIXOComponent);
+	}
 }
 
 void AVisualTestHarnessActor::Tick(float DeltaTime)

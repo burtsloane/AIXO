@@ -23,7 +23,10 @@ class UTextureRenderTarget2D;
 class UTexture2D;
 class UInputMappingContext;
 class UInputAction;
+class ULlamaComponent;
 struct FInputActionValue;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHarnessAndLlamaReady, ULlamaComponent*, LlamaComponent);
 
 UCLASS()
 class AIXO_API AVisualTestHarnessActor : public AActor
@@ -127,6 +130,7 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	void HandleMouseTap(const FVector2D& WidgetPosition, int32 TouchType, int32 PointerIndex);
 
+
 #ifdef never
 	void HandleVisualizationTap(const FVector2D& ScreenPosition, TouchEvent::EType TouchType, int32 PointerIndex);
 	// Input Action Handlers
@@ -141,6 +145,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Commands")
 	void ProcessCommandString(const FString& Command);
 
+    UPROPERTY(BlueprintAssignable, Category = "AIXO")
+    FOnHarnessAndLlamaReady OnHarnessAndLlamaReady;
+    
 	// State query passthrough
 	UFUNCTION(BlueprintCallable, Category = "Commands")
 	TArray<FString> GetAvailableCommandsList();
@@ -150,6 +157,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Commands")
 	TArray<FString> GetSystemNotifications();
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AIXO Components", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<ULlamaComponent> LlamaAIXOComponent; // Use TObjectPtr for modern UE
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
+    FString PathToModel; // Renamed from pathToModel
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
+    FString SystemPromptText; // Renamed from prompt
 
 private:
 	// Hold loaded junctions/segments alive when JSON is imported
@@ -164,4 +180,5 @@ public:
 	UFont* SmallFont = nullptr;          // assign in the editor
 
 	friend class SSubDiagram;
+	friend class ULlamaComponent;
 }; 
