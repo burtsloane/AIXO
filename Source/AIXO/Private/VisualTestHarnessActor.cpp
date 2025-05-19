@@ -614,7 +614,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
                 // Calculate delta from initial position
                 FVector2D Delta = DiagramPosition - TouchInfo->InitialPosition;
                 // Scale the delta by the initial scale to maintain consistent pan speed
-                ApplyPan(TouchInfo->InitialPanOffset + Delta, TouchInfo->InitialScale);
+                ApplyPan(TouchInfo->InitialPanOffset + Delta*TouchInfo->InitialScale, TouchInfo->InitialScale);
                 return true;  // Pan mode has the grab
             }
             else if (bIsPinching && ActiveTouches.Num() == 2)
@@ -721,7 +721,7 @@ void AVisualTestHarnessActor::OnPanTriggered(const FInputActionValue& Value)
             // Calculate delta from initial position
             FVector2D Delta = WorldPosition - TouchInfo->InitialPosition;
             // Scale the delta by the initial scale to maintain consistent pan speed
-            ApplyPan(TouchInfo->InitialPanOffset + Delta, TouchInfo->InitialScale);
+            ApplyPan(TouchInfo->InitialPanOffset + Delta*TouchInfo->InitialScale, TouchInfo->InitialScale);
         }
     }
 }
