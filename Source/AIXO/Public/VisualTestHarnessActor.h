@@ -90,6 +90,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
     FVector2D VisTextureSize = FVector2D(1024, 1024); // Default size BUT THIS DOESN"T SEEM TO MATTER ANY MORE???
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
+    FBox2D VisExtent = FBox2D(FVector2D(100, 100), FVector2D(524, 524));
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visualization")
     TObjectPtr<UTextureRenderTarget2D> VisRenderTarget;
 

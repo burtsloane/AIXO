@@ -181,13 +181,15 @@ void AVisualTestHarnessActor::BeginPlay()
 		TArray<TUniquePtr<ICH_PowerJunction>>  TempJunctions;
 		TArray<TUniquePtr<PWR_PowerSegment>>   TempSegments;
 		TMap<FString, ICH_PowerJunction*>      TempJunctionMap;
+		TMap<FString, float>	 			   TempMarkerDefinitions;
 
 		if (UPowerGridLoader::LoadPowerGridFromJson(
 				InputJsonPath,
 				SubmarineState.Get(),
 				TempJunctions,
 				TempSegments,
-				TempJunctionMap))
+				TempJunctionMap,
+				TempMarkerDefinitions))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("****** Successfully loaded PowerGridDefinition.json ******"));
 			AddLogMessage(TEXT("LOADED PowerGridDefinition.json"));
@@ -203,6 +205,7 @@ void AVisualTestHarnessActor::BeginPlay()
 				CmdDistributor.RegisterSegment(SegPtr.Get());
 				PersistentSegments.Add(MoveTemp(SegPtr));
 			}
+			GridMarkerDefinitions = TempMarkerDefinitions;
 		}
 		else
 		{
@@ -215,6 +218,21 @@ void AVisualTestHarnessActor::BeginPlay()
     InitializeTestSystems();
     InitializeVisualization();
 	if (VizManager) VizManager->ClearSelections();
+	
+	for (ICommandHandler* Handler : CmdDistributor.GetCommandHandlers())
+	{
+		if (Handler)
+		{
+			ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();		// downcast without RTTI
+			if (Junction)
+			{
+				if (VisExtent.Min.X > Junction->X) VisExtent.Min.X = Junction->X;
+				if (VisExtent.Max.X < Junction->X+Junction->W) VisExtent.Max.X = Junction->X+Junction->W;
+				if (VisExtent.Min.Y > Junction->Y) VisExtent.Min.Y = Junction->Y;
+				if (VisExtent.Max.Y < Junction->Y+Junction->W) VisExtent.Max.Y = Junction->Y+Junction->W;
+			}
+		}
+	}
 	
     if (LlamaAIXOComponent)
     {
@@ -255,6 +273,53 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 
             // Apply view transform
             RenderContext->PushTransform(FTransform2D(ViewScale, ViewOffset));
+
+			r.Min.X = VisExtent.Min.X;
+			r.Min.Y = VisExtent.Min.Y;
+			r.Max.X = VisExtent.Max.X;
+			r.Max.Y = VisExtent.Max.Y;
+			RenderContext->DrawRectangle(r, FLinearColor::Black, false);
+
+	// show the guide marks
+	for (const auto& Entry : GridMarkerDefinitions)
+	{
+		FString Key = Entry.Key;
+		float Value = Entry.Value;
+
+		// Access key and value
+		UE_LOG(LogTemp, Warning, TEXT("Key: %s, Value: %f"), *Key, Value);
+		
+		if (Key[0] == 'Y') {
+			r.Min.X = VisExtent.Min.X;
+			r.Min.Y = Value;
+			r.Max.X = VisExtent.Max.X;
+			r.Max.Y = Value+1;
+			RenderContext->DrawRectangle(r, FLinearColor::Gray, false);
+		} else if (Key[0] == 'X') {
+			r.Min.X = Value;
+			r.Min.Y = VisExtent.Min.Y;
+			r.Max.X = Value+1;
+			r.Max.Y = VisExtent.Max.Y;
+			RenderContext->DrawRectangle(r, FLinearColor::Gray, false);
+		}
+	}
+
+	// show all CH rectangles
+	for (ICommandHandler* Handler : CmdDistributor.GetCommandHandlers())
+	{
+		if (Handler)
+		{
+			ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();		// downcast without RTTI
+			if (Junction)
+			{
+				r.Min.X = Junction->X;
+				r.Max.X = Junction->X+Junction->W;
+				r.Min.Y = Junction->Y;
+				r.Max.Y = Junction->Y+Junction->W;
+				RenderContext->DrawRectangle(r, FLinearColor::Yellow, true);
+			}
+		}
+	}
 
             VizManager->Render(*RenderContext);
 
@@ -498,9 +563,9 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         return false;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("HandleMouseTap: Type=%d, Index=%d, Pos=(%.1f, %.1f)"), TouchType, PointerIndex, WidgetPosition.X, WidgetPosition.Y);
-    ICH_PowerJunction *pj = VizManager->Junctions[0];
-    UE_LOG(LogTemp, Log, TEXT("              : Junctions[0]=%s (%.1f, %.1f, %.1f, %.1f)"), *pj->GetSystemName(), pj->X, pj->Y, pj->W, pj->H);
+//    UE_LOG(LogTemp, Log, TEXT("HandleMouseTap: Type=%d, Index=%d, Pos=(%.1f, %.1f)"), TouchType, PointerIndex, WidgetPosition.X, WidgetPosition.Y);
+//    ICH_PowerJunction *pj = VizManager->Junctions[0];
+//    UE_LOG(LogTemp, Log, TEXT("              : Junctions[0]=%s (%.1f, %.1f, %.1f, %.1f)"), *pj->GetSystemName(), pj->X, pj->Y, pj->W, pj->H);
 
     // Get the widget's geometry
     FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
@@ -509,8 +574,8 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
     FVector2D PaintPosition = ImageGeometry.GetAbsolutePosition();
     FVector2D PaintSize = ImageGeometry.GetLocalSize();
     
-    UE_LOG(LogTemp, Log, TEXT("  Paint position: (%.1f, %.1f)"), PaintPosition.X, PaintPosition.Y);
-    UE_LOG(LogTemp, Log, TEXT("  Paint size: (%.1f, %.1f)"), PaintSize.X, PaintSize.Y);
+//    UE_LOG(LogTemp, Log, TEXT("  Paint position: (%.1f, %.1f)"), PaintPosition.X, PaintPosition.Y);
+//    UE_LOG(LogTemp, Log, TEXT("  Paint size: (%.1f, %.1f)"), PaintSize.X, PaintSize.Y);
     
     // Convert to diagram space (0 to VisTextureSize)
     FVector2D DiagramPosition;
@@ -537,9 +602,9 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
 //		UE_LOG(LogTemp, Warning, TEXT("              : ImageGeometry.GetAbsoluteSize(): %f, %f"), ImageGeometry.GetAbsoluteSize().X, ImageGeometry.GetAbsoluteSize().Y);
 //    }
     
-    UE_LOG(LogTemp, Log, TEXT("  Diagram space: (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
-    UE_LOG(LogTemp, Log, TEXT("  World space: (%.1f, %.1f), ViewOffset=(%.1f, %.1f), ViewScale=%.2f"),
-           WorldPosition.X, WorldPosition.Y, ViewOffset.X, ViewOffset.Y, ViewScale);
+//    UE_LOG(LogTemp, Log, TEXT("  Diagram space: (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
+//    UE_LOG(LogTemp, Log, TEXT("  World space: (%.1f, %.1f), ViewOffset=(%.1f, %.1f), ViewScale=%.2f"),
+//           WorldPosition.X, WorldPosition.Y, ViewOffset.X, ViewOffset.Y, ViewScale);
 
     // Handle touch events for pinch-to-zoom
     if (TouchType == TouchEvent::EType::Down)
@@ -581,7 +646,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
                 TouchInfo.CurrentPosition = DiagramPosition;
                 TouchInfo.InitialPanOffset = ViewOffset * ViewScale;
                 TouchInfo.InitialScale = ViewScale;
-                UE_LOG(LogTemp, Log, TEXT("  Started panning from (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
+//                UE_LOG(LogTemp, Log, TEXT("  Started panning from (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
                 return true;  // Pan mode grabbed the event
             }
         }

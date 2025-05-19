@@ -45,7 +45,8 @@ public:
         ASubmarineState* SubState,
         TArray<TUniquePtr<ICH_PowerJunction>>& OutJunctions,
         TArray<TUniquePtr<PWR_PowerSegment>>& OutSegments,
-        TMap<FString, ICH_PowerJunction*>& OutJunctionMap
+        TMap<FString, ICH_PowerJunction*>& OutJunctionMap,
+		TMap<FString, float>& OutMarkerDefinitions
     );
 
     /**

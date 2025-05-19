@@ -329,7 +329,8 @@ bool UPowerGridLoader::LoadPowerGridFromJson(
     ASubmarineState* SubState,
     TArray<TUniquePtr<ICH_PowerJunction>>& OutJunctions,
     TArray<TUniquePtr<PWR_PowerSegment>>& OutSegments,
-    TMap<FString, ICH_PowerJunction*>& OutJunctionMap
+    TMap<FString, ICH_PowerJunction*>& OutJunctionMap,
+    TMap<FString, float>& OutMarkerDefinitions
 )
 {
     RegisterJunctionTypesIfNeeded(); // Ensure factory is populated
@@ -367,6 +368,7 @@ bool UPowerGridLoader::LoadPowerGridFromJson(
             if (Pair.Value.IsValid() && Pair.Value->Type == EJson::Number)
             {
                 Markers.Add(Pair.Key, Pair.Value->AsNumber());
+                OutMarkerDefinitions.Add(Pair.Key, Pair.Value->AsNumber());
             }
             else
             {
