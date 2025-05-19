@@ -255,7 +255,7 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 
             // Apply view transform
             RenderContext->PushTransform(FTransform2D(ViewScale, ViewOffset));
-            
+
             VizManager->Render(*RenderContext);
 
             RenderContext->PopTransform();
@@ -491,7 +491,7 @@ void AVisualTestHarnessActor::AddLogMessage(const FString& Message)
 
 bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, int32 InTouchType, int32 PointerIndex)
 {
-	TouchEvent::EType TouchType = (TouchEvent::EType)InTouchType;
+    TouchEvent::EType TouchType = (TouchEvent::EType)InTouchType;
     // Ignore mouse move events when no button is pressed (hover events)
     if (TouchType == TouchEvent::EType::Move && !bIsPanning && !bIsPinching)
     {
@@ -499,29 +499,47 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
     }
 
     UE_LOG(LogTemp, Log, TEXT("HandleMouseTap: Type=%d, Index=%d, Pos=(%.1f, %.1f)"), TouchType, PointerIndex, WidgetPosition.X, WidgetPosition.Y);
+    ICH_PowerJunction *pj = VizManager->Junctions[0];
+    UE_LOG(LogTemp, Log, TEXT("              : Junctions[0]=%s (%.1f, %.1f, %.1f, %.1f)"), *pj->GetSystemName(), pj->X, pj->Y, pj->W, pj->H);
 
-    // Convert screen position to diagram space
+    // Get the widget's geometry
     FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
-    FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(WidgetPosition);
     
-    // First convert to diagram space (0 to VisTextureSize)
-    FVector2D DiagramPosition = FVector2D(
-        VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
-        VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
-    );
+    // Get the widget's paint geometry (actual painted position in viewport)
+    FVector2D PaintPosition = ImageGeometry.GetAbsolutePosition();
+    FVector2D PaintSize = ImageGeometry.GetLocalSize();
     
-    // Then apply inverse of view transform to get world position
+    UE_LOG(LogTemp, Log, TEXT("  Paint position: (%.1f, %.1f)"), PaintPosition.X, PaintPosition.Y);
+    UE_LOG(LogTemp, Log, TEXT("  Paint size: (%.1f, %.1f)"), PaintSize.X, PaintSize.Y);
+    
+    // Convert to diagram space (0 to VisTextureSize)
+    FVector2D DiagramPosition;
+//     = FVector2D(
+//        (WidgetPosition.X / PaintSize.X) * VisTextureSize.X,
+//        (WidgetPosition.Y / PaintSize.Y) * VisTextureSize.Y
+//    );
+	DiagramPosition = WidgetPosition;
+
+    // Then convert from diagram space to world space
     FTransform2D ViewTransform(ViewScale, ViewOffset);
     FTransform2D InverseViewTransform = ViewTransform.Inverse();
     FVector2D WorldPosition = InverseViewTransform.TransformPoint(DiagramPosition);
     
+//    {
+//		FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(WidgetPosition);
+//		FVector2D LWorldPosition = ImageGeometry.LocalToAbsolute(WidgetPosition);
+////		UE_LOG(LogTemp, Warning, TEXT("              : %f, %f type: %d index: %d"), Evt.Position.X, Evt.Position.Y, TouchType, PointerIndex);
+//		UE_LOG(LogTemp, Warning, TEXT("              : Widget-relative position: %f, %f"), WidgetPosition.X, WidgetPosition.Y);
+//		UE_LOG(LogTemp, Warning, TEXT("              : Local position: %f, %f"), LocalPosition.X, LocalPosition.Y);
+//		UE_LOG(LogTemp, Warning, TEXT("              : Local position: %f, %f"), LWorldPosition.X, LWorldPosition.Y);
+//		UE_LOG(LogTemp, Warning, TEXT("              : VisTextureSize: %f, %f"), VisTextureSize.X, VisTextureSize.Y);
+//		UE_LOG(LogTemp, Warning, TEXT("              : ImageGeometry.GetLocalSize(): %f, %f"), ImageGeometry.GetLocalSize().X, ImageGeometry.GetLocalSize().Y);
+//		UE_LOG(LogTemp, Warning, TEXT("              : ImageGeometry.GetAbsoluteSize(): %f, %f"), ImageGeometry.GetAbsoluteSize().X, ImageGeometry.GetAbsoluteSize().Y);
+//    }
+    
     UE_LOG(LogTemp, Log, TEXT("  Diagram space: (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
     UE_LOG(LogTemp, Log, TEXT("  World space: (%.1f, %.1f), ViewOffset=(%.1f, %.1f), ViewScale=%.2f"),
            WorldPosition.X, WorldPosition.Y, ViewOffset.X, ViewOffset.Y, ViewScale);
-
-    // Use WorldPosition for all subsequent operations
-    auto j = VizManager->Junctions[0];
-    UE_LOG(LogTemp, Log, TEXT("  junction[0] is '%s' %.f, %.f, %.f, %.f"), *j->GetSystemName(), j->X, j->Y, j->W, j->H);
 
     // Handle touch events for pinch-to-zoom
     if (TouchType == TouchEvent::EType::Down)
@@ -530,7 +548,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         bool bOverJunction = false;
         for (const auto& Junction : VizManager->Junctions)
         {
-            if (Junction && Junction->IsPointNear(WorldPosition))  // Use WorldPosition here
+            if (Junction && Junction->IsPointNear(DiagramPosition))
             {
                 bOverJunction = true;
                 break;
@@ -542,65 +560,85 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
             // Junction gets the grab
             TouchEvent Evt;
             Evt.Type = TouchEvent::EType::Down;
-            Evt.Position = WorldPosition;
+            Evt.Position = DiagramPosition;
             Evt.TouchID = PointerIndex;
-            VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+	VizManager->HandleTouchEvent(Evt, &CmdDistributor);
             return true;  // Junction grabbed the event
         }
         else if (ActiveTouches.Num() == 0)
         {
             // Not over a junction, start pan if in empty space
-            ActiveTouches.Add(PointerIndex);
-            bool bInEmptySpace = IsPointInEmptySpace(WorldPosition);
+            bool bInEmptySpace = IsPointInEmptySpace(DiagramPosition);
             UE_LOG(LogTemp, Log, TEXT("  Touch began: InEmptySpace=%d"), bInEmptySpace);
             if (bInEmptySpace)
             {
                 bIsPanning = true;
-                LastPanPosition = WorldPosition;  // Store in world space
-                UE_LOG(LogTemp, Log, TEXT("  Started panning from (%.1f, %.1f)"), LastPanPosition.X, LastPanPosition.Y);
+                // Store initial touch info
+                FTouchInfo& TouchInfo = ActiveTouches.Add(PointerIndex);
+                TouchInfo.PointerId = PointerIndex;
+                TouchInfo.InitialPosition = DiagramPosition;
+                TouchInfo.CurrentPosition = DiagramPosition;
+                TouchInfo.InitialPanOffset = ViewOffset * ViewScale;
+                TouchInfo.InitialScale = ViewScale;
+                UE_LOG(LogTemp, Log, TEXT("  Started panning from (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
                 return true;  // Pan mode grabbed the event
             }
         }
         else if (ActiveTouches.Num() == 1 && bIsPanning)
         {
-            ActiveTouches.Add(PointerIndex);
             // Second finger - start pinch
+            FTouchInfo& TouchInfo = ActiveTouches.Add(PointerIndex);
+            TouchInfo.PointerId = PointerIndex;
+            TouchInfo.InitialPosition = DiagramPosition;
+            TouchInfo.CurrentPosition = DiagramPosition;
+            TouchInfo.InitialPanOffset = ViewOffset * ViewScale;
+            TouchInfo.InitialScale = ViewScale;
+            
+            // Get the first touch's current position
+            const FTouchInfo& FirstTouch = ActiveTouches[ActiveTouches.begin().Key()];
+            InitialPinchDistance = FVector2D::Distance(FirstTouch.CurrentPosition, DiagramPosition);
             bIsPinching = true;
-            InitialPinchDistance = FVector2D::Distance(LastPanPosition, WorldPosition);
             UE_LOG(LogTemp, Log, TEXT("  Started pinching, initial distance=%.1f"), InitialPinchDistance);
             return true;  // Pinch mode grabbed the event
         }
     }
     else if (TouchType == TouchEvent::EType::Move)
     {
-        if (PointerIndex == ActiveTouches[0] && bIsPanning)
+        if (FTouchInfo* TouchInfo = ActiveTouches.Find(PointerIndex))
         {
-            // First finger - continue pan
-            FVector2D Delta = WorldPosition - LastPanPosition;
-            UE_LOG(LogTemp, Log, TEXT("  Panning: Delta=(%.1f, %.1f)"), Delta.X, Delta.Y);
-            ApplyPan(Delta);
-            LastPanPosition = WorldPosition;
-            return true;  // Pan mode has the grab
-        }
-        else if (PointerIndex == ActiveTouches[1] && bIsPinching)
-        {
-            // Second finger - update pinch
-            float CurrentDistance = FVector2D::Distance(LastPanPosition, WorldPosition);
-            float PinchDelta = (CurrentDistance - InitialPinchDistance) * 0.01f; // Scale factor
-            UE_LOG(LogTemp, Log, TEXT("  Pinching: Current=%.1f, Delta=%.2f"), CurrentDistance, PinchDelta);
-            ApplyZoom(PinchDelta);
-            InitialPinchDistance = CurrentDistance;
-            return true;  // Pinch mode has the grab
+            TouchInfo->CurrentPosition = DiagramPosition;
+            
+            if (bIsPanning && PointerIndex == ActiveTouches.begin().Key())
+            {
+                // First finger - continue pan
+                // Calculate delta from initial position
+                FVector2D Delta = DiagramPosition - TouchInfo->InitialPosition;
+                // Scale the delta by the initial scale to maintain consistent pan speed
+                ApplyPan(TouchInfo->InitialPanOffset + Delta, TouchInfo->InitialScale);
+                return true;  // Pan mode has the grab
+            }
+            else if (bIsPinching && ActiveTouches.Num() == 2)
+            {
+                // Second finger - update pinch
+                const FTouchInfo& FirstTouch = ActiveTouches[ActiveTouches.begin().Key()];
+                float CurrentDistance = FVector2D::Distance(FirstTouch.CurrentPosition, DiagramPosition);
+                float PinchDelta = (CurrentDistance - InitialPinchDistance) * 0.01f; // Scale factor
+                UE_LOG(LogTemp, Log, TEXT("  Pinching: Current=%.1f, Delta=%.2f"), CurrentDistance, PinchDelta);
+                ApplyZoom(PinchDelta);
+                InitialPinchDistance = CurrentDistance;
+                return true;  // Pinch mode has the grab
+            }
         }
     }
     else if (TouchType == TouchEvent::EType::Up)
     {
-		ActiveTouches.Remove(PointerIndex);
+        ActiveTouches.Remove(PointerIndex);
         if (ActiveTouches.Num() == 0)
         {
             UE_LOG(LogTemp, Log, TEXT("  Touch ended: WasPanning=%d"), bIsPanning);
             bIsPanning = false;
-            return true;  // Release pan grab
+            bIsPinching = false;
+            return true;  // Release pan/pinch grab
         }
         else if (ActiveTouches.Num() == 1)
         {
@@ -610,10 +648,6 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         }
     }
 
-    // If we get here, either:
-    // 1. This is a hover event (already filtered out)
-    // 2. This is a move/end event for a pointer that doesn't have a grab
-    // 3. This is a begin event that didn't result in a grab
     return false;
 }
 
@@ -629,6 +663,7 @@ void AVisualTestHarnessActor::OnZoomOutTriggered(const FInputActionValue& Value)
 
 void AVisualTestHarnessActor::OnPanStarted(const FInputActionValue& Value)
 {
+	UE_LOG(LogTemp, Log, TEXT("  OnPanStarted"));
     if (Value.GetValueType() == EInputActionValueType::Axis2D)
     {
         FVector2D Position = Value.Get<FVector2D>();
@@ -641,16 +676,28 @@ void AVisualTestHarnessActor::OnPanStarted(const FInputActionValue& Value)
             VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
         );
         
-        if (IsPointInEmptySpace(DiagramPosition))
+        // Then apply inverse of view transform to get world position
+        FTransform2D ViewTransform(ViewScale, ViewOffset);
+        FTransform2D InverseViewTransform = ViewTransform.Inverse();
+        FVector2D WorldPosition = InverseViewTransform.TransformPoint(DiagramPosition);
+        
+        if (IsPointInEmptySpace(WorldPosition))
         {
             bIsPanning = true;
-            LastPanPosition = DiagramPosition;
+            // Store initial touch info for mouse pan
+            FTouchInfo& TouchInfo = ActiveTouches.Add(0); // Use 0 as pointer ID for mouse
+            TouchInfo.PointerId = 0;
+            TouchInfo.InitialPosition = WorldPosition;
+            TouchInfo.CurrentPosition = WorldPosition;
+            TouchInfo.InitialPanOffset = ViewOffset * ViewScale;
+            TouchInfo.InitialScale = ViewScale;
         }
     }
 }
 
 void AVisualTestHarnessActor::OnPanTriggered(const FInputActionValue& Value)
 {
+	UE_LOG(LogTemp, Log, TEXT("  OnPanTriggered"));
     if (bIsPanning && Value.GetValueType() == EInputActionValueType::Axis2D)
     {
         FVector2D CurrentPosition = Value.Get<FVector2D>();
@@ -663,14 +710,26 @@ void AVisualTestHarnessActor::OnPanTriggered(const FInputActionValue& Value)
             VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
         );
         
-        FVector2D Delta = DiagramPosition - LastPanPosition;
-        ApplyPan(Delta);
-        LastPanPosition = DiagramPosition;
+        // Then apply inverse of view transform to get world position
+        FTransform2D ViewTransform(ViewScale, ViewOffset);
+        FTransform2D InverseViewTransform = ViewTransform.Inverse();
+        FVector2D WorldPosition = InverseViewTransform.TransformPoint(DiagramPosition);
+        
+        if (FTouchInfo* TouchInfo = ActiveTouches.Find(0)) // Find mouse touch info
+        {
+            TouchInfo->CurrentPosition = WorldPosition;
+            // Calculate delta from initial position
+            FVector2D Delta = WorldPosition - TouchInfo->InitialPosition;
+            // Scale the delta by the initial scale to maintain consistent pan speed
+            ApplyPan(TouchInfo->InitialPanOffset + Delta, TouchInfo->InitialScale);
+        }
     }
 }
 
 void AVisualTestHarnessActor::OnPanCompleted(const FInputActionValue& Value)
 {
+	UE_LOG(LogTemp, Log, TEXT("  OnPanCompleted"));
+    ActiveTouches.Remove(0); // Remove mouse touch info
     bIsPanning = false;
 }
 
@@ -692,11 +751,14 @@ void AVisualTestHarnessActor::ApplyZoom(float Delta)
     UE_LOG(LogTemp, Log, TEXT("  New scale=%.2f"), ViewScale);
 }
 
-void AVisualTestHarnessActor::ApplyPan(const FVector2D& Delta)
+void AVisualTestHarnessActor::ApplyPan(const FVector2D& NewPan, float Scale)
 {
-    UE_LOG(LogTemp, Log, TEXT("ApplyPan: Delta=(%.1f, %.1f), CurrentOffset=(%.1f, %.1f), Scale=%.2f"),
-           Delta.X, Delta.Y, ViewOffset.X, ViewOffset.Y, ViewScale);
-    ViewOffset += Delta / ViewScale; // Scale the pan delta by the current zoom level
+    UE_LOG(LogTemp, Log, TEXT("ApplyPan: NewPan=(%.1f, %.1f), CurrentOffset=(%.1f, %.1f), Scale=%.2f"),
+           NewPan.X, NewPan.Y, ViewOffset.X, ViewOffset.Y, Scale);
+    
+    // Scale the pan delta by the initial scale to maintain consistent pan speed
+    ViewOffset = NewPan / Scale;
+    
     UE_LOG(LogTemp, Log, TEXT("  New offset=(%.1f, %.1f)"), ViewOffset.X, ViewOffset.Y);
 }
 

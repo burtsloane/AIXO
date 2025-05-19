@@ -88,7 +88,7 @@ protected:
 	TObjectPtr<UImage> VisualizationImage;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Visualization")
-    FVector2D VisTextureSize = FVector2D(1024, 1024); // Default size
+    FVector2D VisTextureSize = FVector2D(1024, 1024); // Default size BUT THIS DOESN"T SEEM TO MATTER ANY MORE???
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Visualization")
     TObjectPtr<UTextureRenderTarget2D> VisRenderTarget;
@@ -220,17 +220,26 @@ public:
 	UFUNCTION()
 	void OnZoomOutButtonClicked();
 
-	// Helper functions - moved to cpp
-	void ApplyZoom(float Delta);
-	void ApplyPan(const FVector2D& Delta);
-	bool IsPointInEmptySpace(const FVector2D& Point) const;
+	// Touch tracking struct
+	struct FTouchInfo
+	{
+		int32 PointerId;
+		FVector2D InitialPosition;  // Initial touch position in world space
+		FVector2D CurrentPosition;  // Current touch position in world space
+		FVector2D InitialPanOffset; // ViewOffset when touch started
+		float InitialScale;         // ViewScale when touch started
+	};
 
 	// Touch gesture tracking
 	bool bIsPanning = false;
-	FVector2D LastPanPosition;
-	float InitialPinchDistance = 0.0f;
 	bool bIsPinching = false;
-	TArray<int32> ActiveTouches;	// for now just IDs, later maybe saved X, Y
+	TMap<int32, FTouchInfo> ActiveTouches;  // Map of pointer ID to touch info
+	float InitialPinchDistance = 0.0f;
 
-    friend class VisualizationManager;
+	// Helper functions - moved to cpp
+	void ApplyZoom(float Delta);
+	void ApplyPan(const FVector2D& Delta, float Scale);
+	bool IsPointInEmptySpace(const FVector2D& Point) const;
+
+	friend class VisualizationManager;
 }; 

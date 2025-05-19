@@ -105,8 +105,8 @@ void UnrealRenderingContext::DrawLine(const FVector2D& Start, const FVector2D& E
     FVector2f N = FVector2f(-Dir.Y, Dir.X) * 0.5f * ScaledThickness;
     FVector2f M = Dir * 0.5f * ScaledThickness;
 
-    A -= M;
-    B += M;
+	A -= M;
+	B += M;
 
     uint32 v0 = PushVertex(FVector2D(A - N), WhiteUV, Color.ToFColor(true));
     uint32 v1 = PushVertex(FVector2D(B - N), WhiteUV, Color.ToFColor(true));
@@ -321,8 +321,8 @@ void UnrealRenderingContext::DrawText(const FVector2D& Pos,
                                       const FString&   Text,
                                       const FLinearColor& Color)
 {
-    UFont* Font = Cast<UFont>(TinyFontPath.TryLoad());
-    if (!Font) return;
+	UFont* Font = Cast<UFont>(TinyFontPath.TryLoad());
+	if (!Font) return;
 
     FColor Col = To8bit(Color);
     Col.A = 255;
