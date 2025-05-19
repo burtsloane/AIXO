@@ -233,6 +233,7 @@ public:
 	// Touch gesture tracking
 	bool bIsPanning = false;
 	bool bIsPinching = false;
+	bool bIsOnJunction = false;
 	TMap<int32, FTouchInfo> ActiveTouches;  // Map of pointer ID to touch info
 	float InitialPinchDistance = 0.0f;
 

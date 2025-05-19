@@ -563,6 +563,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
             Evt.Position = WorldPosition;
             Evt.TouchID = PointerIndex;
 			VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+			bIsOnJunction = true;
             return true;  // Junction grabbed the event
         }
         else if (ActiveTouches.Num() == 0)
@@ -598,6 +599,14 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
             const FTouchInfo& FirstTouch = ActiveTouches[ActiveTouches.begin().Key()];
             InitialPinchDistance = FVector2D::Distance(FirstTouch.CurrentPosition, DiagramPosition);
             bIsPinching = true;
+			if (bIsOnJunction) {
+				TouchEvent Evt;
+				Evt.Type = TouchEvent::EType::Cancel;
+				Evt.Position = WorldPosition;
+				Evt.TouchID = PointerIndex;
+				VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+				bIsOnJunction = false;
+			}
             UE_LOG(LogTemp, Log, TEXT("  Started pinching, initial distance=%.1f"), InitialPinchDistance);
             return true;  // Pinch mode grabbed the event
         }
@@ -608,7 +617,15 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         {
             TouchInfo->CurrentPosition = DiagramPosition;
             
-            if (bIsPanning && PointerIndex == ActiveTouches.begin().Key())
+            if (bIsOnJunction) {
+				TouchEvent Evt;
+				Evt.Type = TouchEvent::EType::Move;
+				Evt.Position = WorldPosition;
+				Evt.TouchID = PointerIndex;
+				VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+				return true;
+            }
+            else if (bIsPanning && PointerIndex == ActiveTouches.begin().Key())
             {
                 // First finger - continue pan
                 // Calculate delta from initial position
@@ -627,13 +644,24 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
                 ApplyZoom(PinchDelta);
                 InitialPinchDistance = CurrentDistance;
                 return true;  // Pinch mode has the grab
-            }
+            } 
         }
     }
     else if (TouchType == TouchEvent::EType::Up)
     {
         ActiveTouches.Remove(PointerIndex);
-        if (ActiveTouches.Num() == 0)
+        if (bIsOnJunction) {
+            TouchEvent Evt;
+            Evt.Type = TouchEvent::EType::Up;
+            Evt.Position = WorldPosition;
+            Evt.TouchID = PointerIndex;
+			VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+			bIsOnJunction = false;
+            bIsPanning = false;
+            bIsPinching = false;
+            return true;  // Release
+		}
+		else if (ActiveTouches.Num() == 0)
         {
             UE_LOG(LogTemp, Log, TEXT("  Touch ended: WasPanning=%d"), bIsPanning);
             bIsPanning = false;
@@ -643,6 +671,34 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         else if (ActiveTouches.Num() == 1)
         {
             UE_LOG(LogTemp, Log, TEXT("  Touch ended: WasPinching=%d"), bIsPinching);
+            bIsPinching = false;
+            return true;  // Release pinch grab
+        } 
+    }
+    else if (TouchType == TouchEvent::EType::Cancel)
+    {
+        ActiveTouches.Remove(PointerIndex);
+        if (bIsOnJunction) {
+            TouchEvent Evt;
+            Evt.Type = TouchEvent::EType::Cancel;
+            Evt.Position = WorldPosition;
+            Evt.TouchID = PointerIndex;
+			VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+			bIsOnJunction = false;
+            bIsPanning = false;
+            bIsPinching = false;
+            return true;  // Release
+		}
+		else if (ActiveTouches.Num() == 0)
+        {
+            UE_LOG(LogTemp, Log, TEXT("  Touch canceled: WasPanning=%d"), bIsPanning);
+            bIsPanning = false;
+            bIsPinching = false;
+            return true;  // Release pan/pinch grab
+        }
+        else if (ActiveTouches.Num() == 1)
+        {
+            UE_LOG(LogTemp, Log, TEXT("  Touch canceled: WasPinching=%d"), bIsPinching);
             bIsPinching = false;
             return true;  // Release pinch grab
         }

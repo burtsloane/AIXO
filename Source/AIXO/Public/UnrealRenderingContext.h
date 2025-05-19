@@ -70,7 +70,7 @@ public:
     virtual void DrawLine(const FVector2D& Start, const FVector2D& End, const FLinearColor& Color, float Thickness) override;
     virtual void DrawCircle(const FVector2D& Center, float Radius, const FLinearColor& Color, bool bFill = false, int Segments = 16) override;
     virtual void DrawRectangle(const FBox2D& Rect, const FLinearColor& Color, bool bFill = false) override;
-    virtual void DrawTriangle(const FVector2D& P1, const FVector2D& P2, const FVector2D& P3, const FLinearColor& Color, bool bFill = false) override;
+    virtual void DrawTriangle(const FVector2D& P1, const FVector2D& P2, const FVector2D& P3, const FLinearColor& Color, bool bFill = true) override;
     virtual void DrawText(const FVector2D& Position, const FString& Text, const FLinearColor& Color /* Font parameters? */) override;
     virtual void DrawTinyText(const FVector2D& Position, const FString& Text, const FLinearColor& Color /* Font parameters? */) override;
     // Add DrawTexture if needed later
