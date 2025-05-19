@@ -548,7 +548,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         bool bOverJunction = false;
         for (const auto& Junction : VizManager->Junctions)
         {
-            if (Junction && Junction->IsPointNear(DiagramPosition))
+            if (Junction && Junction->IsPointNear(WorldPosition))
             {
                 bOverJunction = true;
                 break;
@@ -560,9 +560,9 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
             // Junction gets the grab
             TouchEvent Evt;
             Evt.Type = TouchEvent::EType::Down;
-            Evt.Position = DiagramPosition;
+            Evt.Position = WorldPosition;
             Evt.TouchID = PointerIndex;
-	VizManager->HandleTouchEvent(Evt, &CmdDistributor);
+			VizManager->HandleTouchEvent(Evt, &CmdDistributor);
             return true;  // Junction grabbed the event
         }
         else if (ActiveTouches.Num() == 0)
@@ -671,10 +671,11 @@ void AVisualTestHarnessActor::OnPanStarted(const FInputActionValue& Value)
         FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(Position);
         
         // Convert to diagram space
-        FVector2D DiagramPosition = FVector2D(
-            VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
-            VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
-        );
+        FVector2D DiagramPosition = LocalPosition;
+//        FVector2D(
+//            VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
+//            VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
+//        );
         
         // Then apply inverse of view transform to get world position
         FTransform2D ViewTransform(ViewScale, ViewOffset);
@@ -705,10 +706,11 @@ void AVisualTestHarnessActor::OnPanTriggered(const FInputActionValue& Value)
         FVector2D LocalPosition = ImageGeometry.AbsoluteToLocal(CurrentPosition);
         
         // Convert to diagram space
-        FVector2D DiagramPosition = FVector2D(
-            VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
-            VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
-        );
+        FVector2D DiagramPosition = LocalPosition;
+//        FVector2D(
+//            VisTextureSize.X * LocalPosition.X / ImageGeometry.GetLocalSize().X,
+//            VisTextureSize.Y * LocalPosition.Y / ImageGeometry.GetLocalSize().Y
+//        );
         
         // Then apply inverse of view transform to get world position
         FTransform2D ViewTransform(ViewScale, ViewOffset);
