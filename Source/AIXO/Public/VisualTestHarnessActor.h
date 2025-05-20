@@ -191,9 +191,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
     FString PathToModel;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
-    FString SystemPromptText;
-
 private:
 	// Hold loaded junctions/segments alive when JSON is imported
 	TArray<TUniquePtr<ICH_PowerJunction>> PersistentJunctions;

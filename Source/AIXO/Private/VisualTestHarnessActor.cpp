@@ -102,7 +102,6 @@ AVisualTestHarnessActor::AVisualTestHarnessActor()
     
     LlamaAIXOComponent = CreateDefaultSubobject<ULlamaComponent>(TEXT("LlamaAIXOComponentInstance"));
     LlamaAIXOComponent->PathToModel = PathToModel;
-    LlamaAIXOComponent->SystemPromptText = SystemPromptText;
 }
 
 AVisualTestHarnessActor::~AVisualTestHarnessActor()
@@ -278,7 +277,7 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 			r.Min.Y = VisExtent.Min.Y;
 			r.Max.X = VisExtent.Max.X;
 			r.Max.Y = VisExtent.Max.Y;
-			RenderContext->DrawRectangle(r, FLinearColor::Black, false);
+			RenderContext->DrawRectangle(r, FLinearColor(0.9f, 0.9f, 0.9f), false);
 
 	// show the guide marks
 	for (const auto& Entry : GridMarkerDefinitions)
@@ -287,39 +286,37 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 		float Value = Entry.Value;
 
 		// Access key and value
-		UE_LOG(LogTemp, Warning, TEXT("Key: %s, Value: %f"), *Key, Value);
-		
 		if (Key[0] == 'Y') {
 			r.Min.X = VisExtent.Min.X;
 			r.Min.Y = Value;
 			r.Max.X = VisExtent.Max.X;
 			r.Max.Y = Value+1;
-			RenderContext->DrawRectangle(r, FLinearColor::Gray, false);
+			RenderContext->DrawRectangle(r, FLinearColor(0.9f, 0.9f, 0.9f), false);
 		} else if (Key[0] == 'X') {
 			r.Min.X = Value;
 			r.Min.Y = VisExtent.Min.Y;
 			r.Max.X = Value+1;
 			r.Max.Y = VisExtent.Max.Y;
-			RenderContext->DrawRectangle(r, FLinearColor::Gray, false);
+			RenderContext->DrawRectangle(r, FLinearColor(0.9f, 0.9f, 0.9f), false);
 		}
 	}
 
 	// show all CH rectangles
-	for (ICommandHandler* Handler : CmdDistributor.GetCommandHandlers())
-	{
-		if (Handler)
-		{
-			ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();		// downcast without RTTI
-			if (Junction)
-			{
-				r.Min.X = Junction->X;
-				r.Max.X = Junction->X+Junction->W;
-				r.Min.Y = Junction->Y;
-				r.Max.Y = Junction->Y+Junction->W;
-				RenderContext->DrawRectangle(r, FLinearColor::Yellow, true);
-			}
-		}
-	}
+//	for (ICommandHandler* Handler : CmdDistributor.GetCommandHandlers())
+//	{
+//		if (Handler)
+//		{
+//			ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();		// downcast without RTTI
+//			if (Junction)
+//			{
+//				r.Min.X = Junction->X - Junction->P;
+//				r.Max.X = Junction->X+Junction->W + Junction->P;
+//				r.Min.Y = Junction->Y - Junction->P;
+//				r.Max.Y = Junction->Y+Junction->H + Junction->P;
+//				RenderContext->DrawRectangle(r, FLinearColor::Yellow, true);
+//			}
+//		}
+//	}
 
             VizManager->Render(*RenderContext);
 

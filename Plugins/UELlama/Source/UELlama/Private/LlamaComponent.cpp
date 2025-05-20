@@ -1,9 +1,11 @@
 // LlamaComponent.cpp
 // ReSharper disable CppPrintfBadFormat
 #include "LlamaComponent.h"
+#include "llama.h"
 #include <time.h>
 #include "common.h"
-//#include "../../../../Source/AIXO/Source/AIXOPublic/VisualTestHarnessActor.h"
+#include "Misc/FileHelper.h"      // **** ADD THIS FOR FILE OPERATIONS ****
+#include "Misc/Paths.h"           // **** ADD THIS FOR PROJECT PATHS ****
 #include "VisualTestHarnessActor.h"
 
 #define GGML_CUDA_DMMV_X 64
@@ -13,6 +15,8 @@
 #define GGML_USE_K_QUANTS
 #define K_QUANTS_PER_ITERATION 2
 
+//#define FULL_SYSTEMS_DESC_IN_CONTEXT
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
  static std::vector<llama_token> my_llama_tokenize(
@@ -21,6 +25,7 @@
      bool add_bos,
      bool special
  ) {
+	UE_LOG(LogTemp, Log, TEXT("my_llama_tokenize: %hs"), text.c_str());
      std::vector<llama_token> res;
      res.resize(text.length() + (add_bos ? 1 : 0)); // A reasonable initial size
      int n = llama_tokenize(
@@ -116,9 +121,10 @@ namespace Internal
 
         llama_context_params ctx_params = llama_context_default_params();
         ctx_params.n_ctx = n_ctx_from_model; // Use model's training context or a configured value
-        ctx_params.n_batch = 256; // Or llama_n_batch(ctx) from model if available, or a sensible default. Max tokens per llama_decode call.
+        ctx_params.n_batch = 2048; // Or llama_n_batch(ctx) from model if available, or a sensible default. Max tokens per llama_decode call.
         ctx_params.n_threads = n_threads; // From your global namespace
         ctx_params.n_threads_batch = n_threads; // For batch processing
+        ctx_params.no_perf = false;
 		this->batch_capacity = ctx_params.n_batch; // Store the capacity you used for context
 
         ctx = llama_init_from_model(model, ctx_params);
@@ -211,6 +217,8 @@ namespace Internal
 		llama_kv_self_clear(ctx); // Explicitly clear KV cache on full init
 MirroredKvCacheTokens.clear();
 
+		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Initialization tokenizing fixed blocks."));
+
 		// Just tokenize and store. DO NOT call InvalidateKVCacheFromPosition here.
 		_TokenizeAndStoreFixedBlockInternal(ELlamaContextBlockType::SystemPrompt, InitialSystemPromptFStr, true); // true for BOS
 		_TokenizeAndStoreFixedBlockInternal(ELlamaContextBlockType::StaticWorldInfo, Systems, false);
@@ -229,9 +237,11 @@ MirroredKvCacheTokens.clear();
 			}
 		}
 
+		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Initialization about to send context visual update."));
 		BroadcastContextVisualUpdate_LlamaThread();
 
 		int32_t current_kv_pos_for_predecode = 0; // Start from beginning of cache
+	    double TokenStartTime = FPlatformTime::Seconds();
 		if (!FixedBlocksCombinedTokens.empty()) {
 			int batch_size_override = 64;
 			// Use a simplified version of DecodeTokensAndSample's prompt processing part
@@ -255,16 +265,22 @@ MirroredKvCacheTokens.clear();
 					return;
 				}
 				// Append successfully decoded tokens to MirroredKvCacheTokens
-				for (int32_t k = 0; k < batch.n_tokens; ++k) {
-					 MirroredKvCacheTokens.push_back(FixedBlocksCombinedTokens[i + k]); // Add the token that was processed
-				}
+//				for (int32_t k = 0; k < batch.n_tokens; ++k) {
+//					 MirroredKvCacheTokens.push_back(FixedBlocksCombinedTokens[i + k]); // Add the token that was processed
+//				}
+				MirroredKvCacheTokens.insert(MirroredKvCacheTokens.end(), FixedBlocksCombinedTokens.begin()+i, FixedBlocksCombinedTokens.begin()+i+batch.n_tokens);
 				current_kv_pos_for_predecode += batch.n_tokens;
 				i += batch.n_tokens;
 
 				// Optional: Send progress update to main thread for UI
 				float Progress = static_cast<float>(current_kv_pos_for_predecode) / FixedBlocksCombinedTokens.size();
 				qLlamaToMain.enqueue([this, Progress]() { if (progressCb) progressCb(Progress); });
-				BroadcastContextVisualUpdate_LlamaThread();
+				if (i >= FixedBlocksCombinedTokens.size()) {
+					BroadcastContextVisualUpdate_LlamaThread();
+				} else {
+					BroadcastContextVisualUpdate_LlamaThread(batch.n_tokens, FPlatformTime::Seconds()-TokenStartTime);
+				}
+				TokenStartTime = FPlatformTime::Seconds();
 				if (!bIsRunning) return;
 			}
 			kv_cache_token_cursor = MirroredKvCacheTokens.size();
@@ -323,6 +339,11 @@ MirroredKvCacheTokens.clear();
 
 		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Updating KV for changed BlockType %d."), (int)BlockTypeToUpdate);
 
+		bIsGenerating = true; // Acquire "generation lock" for this entire operation
+		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
+			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
+		});
+
 		// --- 1. Retokenize the changed fixed block ---
 		// _TokenizeAndStoreFixedBlockInternal just updates the FTokenizedContextBlock in FixedContextBlocks
 		_TokenizeAndStoreFixedBlockInternal(BlockTypeToUpdate, NewTextContent, (BlockTypeToUpdate == ELlamaContextBlockType::SystemPrompt));
@@ -339,6 +360,8 @@ MirroredKvCacheTokens.clear();
 															  // kv_cache_token_cursor is now ValidPrefixTokenCount (via MirroredKvCacheTokens.size())
 
 		UE_LOG(LogTemp, Log, TEXT("LlamaThread: KV cache rolled back to %d tokens for BlockType %d update."), MirroredKvCacheTokens.size(), (int)BlockTypeToUpdate);
+
+		BroadcastContextVisualUpdate_LlamaThread();
 
 		// --- 3. Assemble the sequence of ALL tokens that need to be re-decoded to update the KV cache ---
 		// This includes the updated block, all subsequent fixed blocks, the full conversation history, and current HFS.
@@ -382,11 +405,13 @@ MirroredKvCacheTokens.clear();
 			// The kv_cache_token_cursor (from MirroredKvCacheTokens.size()) is already at ValidPrefixTokenCount.
 			// The token positions for llama_batch_add will start from this current MirroredKvCacheTokens.size().
 			int32_t kv_pos_for_this_decode_pass = MirroredKvCacheTokens.size();
+		    double TokenStartTime = FPlatformTime::Seconds();
 
 			for (int32_t i = 0; i < TokensToReDecodeNow.size(); /* i advanced by batch.n_tokens */ ) {
+				int batch_size_override = 64;
 				common_batch_clear(batch);
 				int32_t n_batch_fill = 0;
-				for (int32_t j = 0; j < this->batch_capacity && i + j < TokensToReDecodeNow.size(); ++j) {
+				for (int32_t j = 0; j < batch_size_override/*this->batch_capacity*/ && i + j < TokensToReDecodeNow.size(); ++j) {
 					common_batch_add(batch, TokensToReDecodeNow[i + j], kv_pos_for_this_decode_pass + j, {0}, false); // Logits = false
 					n_batch_fill++;
 				}
@@ -403,24 +428,36 @@ MirroredKvCacheTokens.clear();
 				}
 
 				// Append successfully decoded tokens to MirroredKvCacheTokens
-				for (int32_t k = 0; k < batch.n_tokens; ++k) {
-					 MirroredKvCacheTokens.push_back(TokensToReDecodeNow[i + k]);
-				}
+//				for (int32_t k = 0; k < batch.n_tokens; ++k) {
+//					 MirroredKvCacheTokens.push_back(TokensToReDecodeNow[i + k]);
+//				}
+				MirroredKvCacheTokens.insert(MirroredKvCacheTokens.end(), TokensToReDecodeNow.begin()+i, TokensToReDecodeNow.begin()+i+batch.n_tokens);
 				kv_pos_for_this_decode_pass += batch.n_tokens;
 				i += batch.n_tokens;
 
 				// Optional: Send progress if this is a very long background update
 				// float Progress = static_cast<float>(i) / TokensToReDecodeNow.size();
 				// qLlamaToMain.enqueue([this, Progress]() { /* Call OnLlamaLoadingProgress or similar */ });
-				if ((kv_cache_token_cursor % 10) == 0) BroadcastContextVisualUpdate_LlamaThread();
+				if (i >= TokensToReDecodeNow.size()) {
+					BroadcastContextVisualUpdate_LlamaThread();
+				} else {
+					BroadcastContextVisualUpdate_LlamaThread(batch.n_tokens, FPlatformTime::Seconds()-TokenStartTime);
+				}
+				TokenStartTime = FPlatformTime::Seconds();
 			}
 			kv_cache_token_cursor = MirroredKvCacheTokens.size();
+			BroadcastContextVisualUpdate_LlamaThread();
 			UE_LOG(LogTemp, Log, TEXT("LlamaThread: Background KV Update for BlockType %d complete. KV cursor (MirroredKvCacheTokens.size) now at %d."),
 				(int)BlockTypeToUpdate, MirroredKvCacheTokens.size());
 		} else {
 			UE_LOG(LogTemp, Log, TEXT("LlamaThread: Background KV Update for BlockType %d - no tokens needed re-decoding after invalidation (e.g., last block changed or history empty). KV cursor at %d."),
 				(int)BlockTypeToUpdate, MirroredKvCacheTokens.size());
 		}
+
+		bIsGenerating = false; // Acquire "generation lock" for this entire operation
+		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
+			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
+		});
 
 		// --- 5. Broadcast Context Visual Update ---
 		// It's good to update the visualizer after the KV cache is refreshed.
@@ -474,15 +511,24 @@ MirroredKvCacheTokens.resize(ValidTokenCountBeforeInvalidation);
 		}
 
 		// 4. **** ADD FOCUS INSTRUCTION (if current input was from user) ****
-		if (CurrentInputTypeHintFStr.Equals(TEXT("user"), ESearchCase::IgnoreCase) && !CurrentInputOriginalTextFStr.IsEmpty()) {
-			std::string clean_user_query_std_str = TCHAR_TO_UTF8(*CurrentInputOriginalTextFStr);
-			// Basic sanitization for embedding in a string, though LLMs are usually robust.
-			// Could replace internal quotes if necessary, but often not needed.
-			std::string focus_instr_str = "<|im_start|>system\nInstruction: Your primary task is to address the last user query: \"" + clean_user_query_std_str + "\". Use all available information to formulate your response or action for this specific query.\n<|im_end|>\n";
-			std::vector<llama_token> focus_tokens = my_llama_tokenize(model, focus_instr_str, false, true);
-			OutFullPromptTokens.insert(OutFullPromptTokens.end(), focus_tokens.begin(), focus_tokens.end());
-			UE_LOG(LogTemp, Log, TEXT("LlamaThread: Added focus instruction for query: %s"), *CurrentInputOriginalTextFStr);
-		}
+//		if (CurrentInputTypeHintFStr.Equals(TEXT("user"), ESearchCase::IgnoreCase) && !CurrentInputOriginalTextFStr.IsEmpty()) {
+//			std::string clean_user_query_std_str = TCHAR_TO_UTF8(*CurrentInputOriginalTextFStr);
+//			// Basic sanitization for embedding in a string, though LLMs are usually robust.
+//			// Could replace internal quotes if necessary, but often not needed.
+//			std::string focus_instr_str = "<|im_start|>system\nInstruction: Your primary task is to address the last user query: \"" + clean_user_query_std_str + "\". Use all available information to formulate your response or action for this specific query.\n<|im_end|>\n";
+//			std::vector<llama_token> focus_tokens = my_llama_tokenize(model, focus_instr_str, false, true);
+//			OutFullPromptTokens.insert(OutFullPromptTokens.end(), focus_tokens.begin(), focus_tokens.end());
+//			UE_LOG(LogTemp, Log, TEXT("LlamaThread: Added focus instruction for query: %s"), *CurrentInputOriginalTextFStr);
+//		}
+if (0)    if (CurrentInputTypeHintFStr.Equals(TEXT("user"), ESearchCase::IgnoreCase) && !CurrentInputOriginalTextFStr.IsEmpty()) {
+        // Only add focus instruction if the current input is from the USER, not a tool response.
+        std::string clean_user_query_std_str = TCHAR_TO_UTF8(*CurrentInputOriginalTextFStr);
+        std::string focus_instr_str = "<|im_start|>system\nInstruction: Your primary task is to address the last user query: \"" + clean_user_query_std_str + "\". Use all available information, including any recent tool responses, to formulate your response or action for this specific query.\n<|im_end|>\n";
+        // Added "including any recent tool responses" to the focus instruction itself.
+        std::vector<llama_token> focus_tokens = my_llama_tokenize(model, focus_instr_str, false, true);
+        OutFullPromptTokens.insert(OutFullPromptTokens.end(), focus_tokens.begin(), focus_tokens.end());
+        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Added focus instruction for user query: %s"), *CurrentInputOriginalTextFStr);
+    }
 		
 		// 5. AI Assistant Prompt Prefix
 		// For Qwen, the assistant turn starts immediately after the last user/system/tool <|im_end|>.
@@ -496,11 +542,45 @@ MirroredKvCacheTokens.resize(ValidTokenCountBeforeInvalidation);
 		OutFullPromptTokens.insert(OutFullPromptTokens.end(), assistant_prefix_tokens.begin(), assistant_prefix_tokens.end());
 	}
 	
+	void Llama::LlamaLogContext(FString Label) {
+		int32_t StablePrefixLength = 0;
+		for (uint8 j = 0; j < (uint8)ELlamaContextBlockType::COUNT; ++j) {
+			if (const FTokenizedContextBlock* Block = FixedContextBlocks.Find((ELlamaContextBlockType)j)) {
+				StablePrefixLength += Block->Tokens.size();
+			}
+		}
+		StablePrefixLength += ConversationHistoryTokens.size();
+		int32 CurrentFixedTokens = 0;
+		for (uint8 i = 0; i < (uint8)ELlamaContextBlockType::COUNT; ++i) {
+			if (const FTokenizedContextBlock* Block = FixedContextBlocks.Find((ELlamaContextBlockType)i)) {
+				CurrentFixedTokens += Block->Tokens.size();
+			}
+		}
+		std::string cs;
+		int lim = MirroredKvCacheTokens.size();
+		int i = lim - 1200;
+		if (i < CurrentFixedTokens) i = CurrentFixedTokens;
+		for	(; i<lim; i++) {
+			if (i == (StablePrefixLength-ConversationHistoryTokens.size())) cs += "\n-----Start of convo-----\n";
+//			if (i == StablePrefixLength) cs += "\n-----End of convo-----\n";
+			const char* piece = llama_vocab_get_text(vocab, MirroredKvCacheTokens[i]);
+			if (piece) cs += piece;
+			if ((i+1) == StablePrefixLength) cs += "\n-----End of convo-----\n";
+			if ((i+1) == kv_cache_token_cursor) cs += "\n-----Token cursor-----\n";
+		}
+		std::string ss = CleanString(cs);
+		//FString str = UTF8_TO_TCHAR(CleanString(CurrentReplyStr).c_str());
+		FString fs = UTF8_TO_TCHAR(ss.c_str());
+		UE_LOG(LogTemp, Log, TEXT("LlamaLogContext %s: CONTEXT DUMP STARTS ---------------------------------------\n\n%s\n\nCONTEXT DUMP ENDS ---------------------------------------\n"), *Label, *fs);
+	}
+
+	
     void Llama::DecodeTokensAndSample(std::vector<llama_token>& FullPromptTokensForThisTurn, bool bIsFinalPromptTokenLogits)
     {
         if (!ctx || !model || (FullPromptTokensForThisTurn.size() == 0)) return;
 
-        bIsGenerating = true;
+//        LlamaLogContext("DecodeTokensAndSample top");
+
         eos_reached = false;
         CurrentTurnAIReplyTokens.clear();
 
@@ -533,15 +613,19 @@ MirroredKvCacheTokens.resize(ValidTokenCountBeforeInvalidation);
 //        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Decoding prompt. Total prompt tokens: %d. KV cursor: %d. Tokens to eval from prompt: %d at index %d."),
 //            FullPromptTokensForThisTurn.size(), kv_cache_token_cursor, n_tokens_to_eval_from_prompt, prompt_eval_start_index);
 
+//        LlamaLogContext("DecodeTokensAndSample decoding");
+
         // Decode the new part of the prompt
 #ifdef TRACK_PARALLEL_CONTEXT_TOKENS
 DebugContext("DecodeTokensAndSample: Before Prompt Decoded, decoding");
 #endif // TRACK_PARALLEL_CONTEXT_TOKENS
 		if (n_tokens_to_eval_from_prompt > 0) {
+		    double TokenStartTime = FPlatformTime::Seconds();
 			for (int32_t i = 0; i < n_tokens_to_eval_from_prompt;  ) { //i advanced by batch size
+				int batch_size_override = 64;
 				common_batch_clear(batch);
 				int32_t current_batch_fill_count = 0;
-				for (int32_t j = 0; j < this->batch_capacity && i + j < n_tokens_to_eval_from_prompt; ++j) {
+				for (int32_t j = 0; j < batch_size_override/*this->batch_capacity*/ && i + j < n_tokens_to_eval_from_prompt; ++j) {
 					// Token from the vector to be decoded
 					llama_token token_to_decode = FullPromptTokensForThisTurn[prompt_eval_start_index_in_vector + i + j];
 					
@@ -568,7 +652,12 @@ MirroredKvCacheTokens.push_back(token_to_decode);
 				// IMPORTANT: Advance kv_cache_token_cursor by the number of tokens *successfully decoded and added to KV cache*
 				kv_cache_token_cursor += batch.n_tokens;
 				i += batch.n_tokens; // Advance the loop for the source tokens
-				BroadcastContextVisualUpdate_LlamaThread();
+				if (i >= n_tokens_to_eval_from_prompt) {
+					BroadcastContextVisualUpdate_LlamaThread();
+				} else {
+					BroadcastContextVisualUpdate_LlamaThread(batch.n_tokens, FPlatformTime::Seconds()-TokenStartTime);
+				}
+				TokenStartTime = FPlatformTime::Seconds();
 			}
 			kv_cache_token_cursor = MirroredKvCacheTokens.size();
 		}
@@ -578,6 +667,9 @@ DebugContext("DecodeTokensAndSample: Prompt Decoded, starting generation");
 #endif // TRACK_PARALLEL_CONTEXT_TOKENS
 
         // Start Generation Loop
+//        LlamaLogContext("DecodeTokensAndSample start generation");
+		double TokenStartTime = FPlatformTime::Seconds();
+		int32 kv_cache_token_cursor_at_gen_start = kv_cache_token_cursor;
         while (kv_cache_token_cursor < n_ctx_from_model && !eos_reached) { // Check against actual context window
             if (!bIsRunning) { eos_reached = true; break; } // Check if shutdown requested
 //if ((kv_cache_token_cursor%10) == 0) UE_LOG(LogTemp, Log, TEXT("*"))
@@ -595,20 +687,20 @@ DebugContext("DecodeTokensAndSample: Prompt Decoded, starting generation");
                     const char* piece = llama_vocab_get_text(vocab, tk);
                     if (piece) CurrentReplyStr += piece;
                 }
-                // TODO: Proper Tool Call Parsing Here based on your chosen format (e.g. ```tool_call...``` or JSON)
-                // For now, simple placeholder:
-				if (CurrentReplyStr.find("<tool_call>") != std::string::npos) {
-                    qLlamaToMain.enqueue([this, CurrentReplyStr]() {
-                    	FString str = UTF8_TO_TCHAR(CleanString(CurrentReplyStr).c_str());
-                    	if (toolCallCb) toolCallCb(str);
-					});
-                    // Don't send EOS yet, wait for tool response to continue generation
-                    // Or, if tool call is the *end* of the turn, then set eos_reached.
-                    // This depends on your AIXO's turn structure. Assuming tool call ends AI's immediate output:
-                    UE_LOG(LogTemp, Log, TEXT("LlamaThread: Tool call detected. '%hs'"), CleanString(CurrentReplyStr).c_str());
-                } else {
-					UE_LOG(LogTemp, Log, TEXT("LlamaThread: EOS or Stop Sequence reached."));
-                }
+//                // TODO: Proper Tool Call Parsing Here based on your chosen format (e.g. ```tool_call...``` or JSON)
+//                // For now, simple placeholder:
+//				if (CurrentReplyStr.find("<tool_call>") != std::string::npos) {
+//                    qLlamaToMain.enqueue([this, CurrentReplyStr]() {
+//                    	FString str = UTF8_TO_TCHAR(CleanString(CurrentReplyStr).c_str());
+//                    	if (toolCallCb) toolCallCb(str);
+//					});
+//                    // Don't send EOS yet, wait for tool response to continue generation
+//                    // Or, if tool call is the *end* of the turn, then set eos_reached.
+//                    // This depends on your AIXO's turn structure. Assuming tool call ends AI's immediate output:
+//                    UE_LOG(LogTemp, Log, TEXT("LlamaThread: Tool call detected. '%hs'"), CleanString(CurrentReplyStr).c_str());
+//                } else {
+//					UE_LOG(LogTemp, Log, TEXT("LlamaThread: EOS or Stop Sequence reached."));
+//                }
                 break; // Exit generation loop
             }
 
@@ -632,14 +724,30 @@ MirroredKvCacheTokens.push_back(new_token_id);
                 break;
             }
             kv_cache_token_cursor++;
+			BroadcastContextVisualUpdate_LlamaThread(kv_cache_token_cursor - kv_cache_token_cursor_at_gen_start, 0.0f, FPlatformTime::Seconds() - TokenStartTime);
         } // End of generation loop
-
-		// generation loop ends
-		bIsGenerating = false;
+		BroadcastContextVisualUpdate_LlamaThread(kv_cache_token_cursor - kv_cache_token_cursor_at_gen_start, 0.0f, FPlatformTime::Seconds() - TokenStartTime);
+		TokenStartTime = FPlatformTime::Seconds();
 
 #ifdef TRACK_PARALLEL_CONTEXT_TOKENS
 DebugContext("DecodeTokensAndSample: Ending generation");
 #endif // TRACK_PARALLEL_CONTEXT_TOKENS
+
+//        LlamaLogContext("DecodeTokensAndSample end generation");
+
+// performance data
+if (eos_reached) {
+    struct llama_perf_context_data PerfCtxData = llama_perf_context(ctx);
+    struct llama_perf_sampler_data PerfSamplerData = llama_perf_sampler(sampler_chain_instance);
+
+    UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Raw Perf - PromptEvalT:%.2fms, PromptEvalN:%d, GenEvalT:%.2fms, GenEvalN:%d, SampleT:%.2fms, SampleN:%d"),
+        (float)PerfCtxData.t_p_eval_ms, PerfCtxData.n_p_eval,
+        (float)PerfCtxData.t_eval_ms, PerfCtxData.n_eval,
+        (float)PerfSamplerData.t_sample_ms, PerfSamplerData.n_sample);
+    
+    llama_perf_context_reset(ctx);
+    llama_perf_sampler_reset(sampler_chain_instance);
+}
 
         if (eos_reached) { // eos_reached is true if llama_token_eos or your stop sequence was hit
             FString RawAIOutputThisTurnStr;
@@ -683,6 +791,7 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 
                 bToolCallMadeThisTurn = true;
                 qLlamaToMain.enqueue([this, ToolCallPayloadForMainThread]() { if (toolCallCb) toolCallCb(ToolCallPayloadForMainThread); });
+
                 UE_LOG(LogTemp, Log, TEXT("LlamaThread: Tool call detected: '%s'"), *ToolCallFullTagForHistory);
             }
 
@@ -705,6 +814,7 @@ DebugContext("DecodeTokensAndSample: Ending generation");
             }
             // --- End of Parsing ---
 
+//        	LlamaLogContext("DecodeTokensAndSample end of parsing");
 
             // 2. Construct the *actual* assistant message TOKENS to store in history
             std::vector<llama_token> AssistantMessageTokensForStorageInHistory;
@@ -719,6 +829,9 @@ DebugContext("DecodeTokensAndSample: Ending generation");
                 std::vector<llama_token> cd_std = my_llama_tokenize(model, cap_dialogue_std_str, false, false); // false for plain text
                 AssistantMessageTokensForStorageInHistory.insert(AssistantMessageTokensForStorageInHistory.end(), cd_std.begin(), cd_std.end());
             }
+
+//        	LlamaLogContext("DecodeTokensAndSample 2");
+
             // If AssistantMessageTokensForStorageInHistory is empty here, it means the AI generated
             // something that wasn't a recognized tool call or CAP: dialogue (e.g., only a <think> block and then stopped).
             // You might decide to store an empty assistant turn or a placeholder.
@@ -735,7 +848,23 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 					s = CleanString(s);
 					UE_LOG(LogTemp, Log, TEXT("LlamaThread: DecodeTokensAndSample KV cursor: %d. send to assistant history '%hs'."), kv_cache_token_cursor, s.c_str());
 				}
+				int32_t StablePrefixLength = 0;
+				for (uint8 i = 0; i < (uint8)ELlamaContextBlockType::COUNT; ++i) {
+					if (const FTokenizedContextBlock* Block = FixedContextBlocks.Find((ELlamaContextBlockType)i)) {
+						StablePrefixLength += Block->Tokens.size();
+					}
+				}
+				StablePrefixLength += ConversationHistoryTokens.size(); // ConversationHistoryTokens now includes the latest input with its role tags
+
+				if (kv_cache_token_cursor > StablePrefixLength) {
+					UE_LOG(LogTemp, Warning, TEXT("LlamaThread: KV cursor (%d) was beyond current fixed+convo length (%d). Adjusting."),
+						kv_cache_token_cursor, StablePrefixLength);
+					InvalidateKVCacheFromPosition(StablePrefixLength); // This sets kv_cache_token_cursor = StablePrefixLength
+				}
                 AppendTurnToStructuredHistory(TEXT("assistant"), AssistantMessageTokensForStorageInHistory);
+                MirroredKvCacheTokens.insert(MirroredKvCacheTokens.end(), AssistantMessageTokensForStorageInHistory.begin(), AssistantMessageTokensForStorageInHistory.end());
+                kv_cache_token_cursor += AssistantMessageTokensForStorageInHistory.size();
+//LlamaLogContext("DecodeTokensAndSample 3");
                 // Note: AppendTurnToStructuredHistory should internally rebuild the flat ConversationHistoryTokens
                 // and PruneConversationHistory (if called from there) should handle KV cache invalidation
                 // if the total length changes significantly or pruning occurs.
@@ -752,6 +881,7 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 
         UE_LOG(LogTemp, Log, TEXT("LlamaThread: DecodeTokensAndSample finished. KV cursor: %d. EOS: %d. bIsGenerating: %d"),
             kv_cache_token_cursor, eos_reached.load(), bIsGenerating.load());
+//        LlamaLogContext("DecodeTokensAndSample finished");
     } // End of DecodeTokensAndSample
 
     void Llama::AppendTurnToStructuredHistory(const FString& Role, const std::vector<llama_token>& Tokens) {
@@ -1025,16 +1155,26 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 		});
 	}
 
-	void Llama::BroadcastContextVisualUpdate_LlamaThread()
+	void Llama::BroadcastContextVisualUpdate_LlamaThread(int32 nTokens, float sDecode, float sGenerate)
 	{
 		if (!model || !ctx || !OwningLlamaComponentPtr) { // Added OwningLlamaComponentPtr check
 			UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Cannot broadcast context visual update, model/ctx/owner not ready."));
 			return;
 		}
 
+//UE_LOG(LogTemp, Warning, TEXT("BroadcastContextVisualUpdate_LlamaThread: %d tokens, %.fms decode, %.fms generate."), nTokens, 1000*sDecode, 1000*sGenerate);
+
 		FContextVisPayload Payload;
 		Payload.TotalTokenCapacity = n_ctx_from_model; // The full capacity of the context window
 		Payload.KvCacheDecodedTokenCount = MirroredKvCacheTokens.size(); // How much is ACTUALLY in KV cache
+		if (nTokens == 0) {
+			// don't consume msDecode or msGenerate
+			Payload.fFmsPerTokenDecode = 0.0f;
+			Payload.fFmsPerTokenGenerate = 0.0f;
+		} else {
+			if (sDecode > 0) Payload.fFmsPerTokenDecode = 1000.0f*sDecode / nTokens;
+			if (sGenerate > 0) Payload.fFmsPerTokenGenerate = 1000.0f*sGenerate / nTokens;
+		}
 
 		// This will sum the tokens of the blocks we *intend* to visualize as part of the current logical prompt structure
 		int32 AccumulatedTokensForVisualizedPromptStructure = 0;
@@ -1157,22 +1297,25 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 			// This ensures the data persists until the lambda executes.
 			FContextVisPayload PayloadCopy = Payload;
 
+//			UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda queued."));
+
 			qLlamaToMain.enqueue([OwnerPtr = OwningLlamaComponentPtr, CapturedPayload = PayloadCopy]() {
 				// This lambda now runs on the Main Thread.
+//				UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda starts on main thread."));
 				// OwnerPtr and CapturedPayload are copies held by the lambda.
 				if (OwnerPtr && OwnerPtr->IsValidLowLevel()) { // Good practice to check validity on main thread
 					OwnerPtr->ForwardContextUpdateToGameThread(CapturedPayload);
-//					UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread lambda executed."));
+//					UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread lambda executed. dec ms=%.f gen ms=%.f"), CapturedPayload.fFmsPerTokenDecode, CapturedPayload.fFmsPerTokenGenerate);
 				} else {
-					UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's OwnerLlamaComponentPtr was null or invalid when ForwardContextUpdateToGameThread lambda executed."));
+					UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's OwningLlamaComponentPtr was null or invalid when ForwardContextUpdateToGameThread lambda executed."));
 				}
 			});
 		} else {
 			UE_LOG(LogTemp, Error, TEXT("LlamaThread: OwningLlamaComponentPtr is null in BroadcastContextVisualUpdate. Cannot send update."));
 		}
 
-
-//  UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Broadcasting Context Update. TotalTokenCapacity: %d, KvCacheDecodedTokenCount: %d, NumVisualBlocks: %d"), Payload.TotalTokenCapacity, Payload.KvCacheDecodedTokenCount, Payload.Blocks.Num());
+//  UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Broadcasting Context Update. TotalTokenCapacity: %d, KvCacheDecodedTokenCount: %d, NumVisualBlocks: %d, decodems: %g, genms: %g"), Payload.TotalTokenCapacity, Payload.KvCacheDecodedTokenCount, Payload.Blocks.Num(), Payload.fFmsPerTokenDecode, Payload.fFmsPerTokenGenerate);
+/*
   for (int32 i = 0; i < Payload.Blocks.Num(); ++i) {
       const FContextVisBlock& Block = Payload.Blocks[i];
       FString BlockTypeName = UEnum::GetValueAsString(Block.BlockType);
@@ -1183,10 +1326,12 @@ DebugContext("DecodeTokensAndSample: Ending generation");
        FContextVisPayload PayloadCopy = Payload;
        qLlamaToMain.enqueue([this, PayloadCopy]() mutable {
           if (OwningLlamaComponentPtr && OwningLlamaComponentPtr->IsValidLowLevel()) {
+//				UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's second marshal lambda starts on main thread."));
               OwningLlamaComponentPtr->ForwardContextUpdateToGameThread(PayloadCopy);
           }
        });
   }
+*/
   
   
   	}
@@ -1196,6 +1341,8 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 		const FString& HighFrequencyContextTextFStr, // Raw HFS text
 		const FString& InputTypeHintFStr          // "user", "tool" (for formatting the InputTextFStr)
 	) {
+//        LlamaLogContext("ProcessInputAndGenerate_LlamaThread top");
+
 		// --- 0. Initial Checks & Generation Lock ---
 		if (!ctx || !model) {
 			UE_LOG(LogTemp, Error, TEXT("LlamaThread: ProcessInput called but Llama not ready."));
@@ -1214,6 +1361,9 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 			return;
 		}
 		bIsGenerating = true; // Acquire "generation lock" for this entire operation
+		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
+			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
+		});
 		// This flag will be reset at the very end of this function, or in DecodeTokensAndSample if it errors early.
 
 		UE_LOG(LogTemp, Log, TEXT("LlamaThread: BEGIN ProcessInput: '%s', HFS: '%s', Hint: '%s'"), *InputTextFStr, *HighFrequencyContextTextFStr, *InputTypeHintFStr);
@@ -1256,6 +1406,9 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 				kv_cache_token_cursor, StablePrefixLength);
 			InvalidateKVCacheFromPosition(StablePrefixLength); // This sets kv_cache_token_cursor = StablePrefixLength
 		}
+
+//        LlamaLogContext("ProcessInputAndGenerate_LlamaThread cut back");
+
 		// Now, kv_cache_token_cursor accurately reflects the end of the portion of the upcoming
 		// prompt that consists of (Fixed Blocks + Full Formatted Conversation History).
 		// The HFS, Focus Instruction, and AI Prefix will be new tokens to decode.
@@ -1277,12 +1430,13 @@ DebugContext("DecodeTokensAndSample: Ending generation");
 		// --- 7. Reset bIsGenerating after all operations for this input are complete ---
 		// DecodeTokensAndSample should set bIsGenerating = false upon its completion or error.
 		// This is a final check.
-		if (bIsGenerating.load(std::memory_order_acquire)) {
-			UE_LOG(LogTemp, Error, TEXT("LlamaThread: bIsGenerating is STILL TRUE after ProcessInputAndGenerate_LlamaThread's call to DecodeTokensAndSample. Forcing false."));
-			bIsGenerating = false; 
-		}
+		bIsGenerating = false; 
+		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
+			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
+		});
 
 		BroadcastContextVisualUpdate_LlamaThread();
+//        LlamaLogContext("ProcessInputAndGenerate_LlamaThread finished");
 
 		UE_LOG(LogTemp, Log, TEXT("LlamaThread: END ProcessInput: '%s'. kv_cache_token_cursor at %d"), *InputTextFStr, kv_cache_token_cursor);
 	}
@@ -1344,12 +1498,39 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
             OnFullContextDumpReady.Broadcast(ContextDump);
         });
     };
-    LlamaInternal->toolCallCb = [this](FString ToolCallJson) {
-        LlamaInternal->qLlamaToMain.enqueue([this, ToolCallJson]() {
-        	// TODO: this is where to handle tool calls instead of calling blueprints, need access to the VisualTestHarnessActor and SubmarineState
-            OnToolCallDetected.Broadcast(ToolCallJson);
-        });
-    };
+	// In ULlamaComponent constructor, where toolCallCb is set up:
+	LlamaInternal->toolCallCb = [this](FString ToolCallJsonRaw) {
+		LlamaInternal->qLlamaToMain.enqueue([this, ToolCallJsonRaw]() {
+			UE_LOG(LogTemp, Log, TEXT("MainThread: Received ToolCall: %s"), *ToolCallJsonRaw);
+			// Parse ToolCallJsonRaw to get tool name and arguments
+			TSharedPtr<FJsonObject> JsonObject;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ToolCallJsonRaw);
+			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid()) {
+				FString ToolName;
+				if (JsonObject->TryGetStringField(TEXT("name"), ToolName)) {
+					if (ToolName.Equals(TEXT("query_submarine_system"))) {
+						FString QueryString;
+						const TSharedPtr<FJsonObject>* ArgsObject;
+						if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
+							(*ArgsObject)->TryGetStringField(TEXT("query_string"), QueryString)) {
+							HandleToolCall_QuerySubmarineSystem(QueryString);
+						} else {
+							SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'query_string' in arguments.\"}"));
+						}
+					}
+					// else if (ToolName.Equals(TEXT("execute_submarine_command"))) { ... }
+					else {
+						SendToolResponseToLlama(ToolName, FString::Printf(TEXT("{\"error\": \"Unknown tool name: %s\"}"), *ToolName));
+					}
+				} else {
+					 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Tool call JSON missing 'name' field.\"}"));
+				}
+			} else {
+				 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Invalid tool call JSON format.\"}"));
+			}
+			// OnToolCallDetected.Broadcast(ToolCallJsonRaw); // If BP also needs raw string
+		});
+	};
     LlamaInternal->errorCb = [this](FString ErrorMessage) {
         LlamaInternal->qLlamaToMain.enqueue([this, ErrorMessage]() {
             OnLlamaErrorOccurred.Broadcast(ErrorMessage);
@@ -1385,6 +1566,7 @@ void ULlamaComponent::BeginPlay()
 
 FString ULlamaComponent::MakeSystemsBlock()
 {
+#ifdef FULL_SYSTEMS_DESC_IN_CONTEXT
 	FString str = "\nSUBMARINE SYSTEMS:\n";		// StaticWorldInfo
 	for (const ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers)
 	{
@@ -1418,6 +1600,7 @@ FString ULlamaComponent::MakeSystemsBlock()
 				str += "\n";
 			}
 		}
+//break;		// TESTING because this is too long
 	}
 	str += "\nPOWER GRID SEGMENTS:\n";
 	for (const PWR_PowerSegment* seg : HarnessActor->CmdDistributor.GetSegments())
@@ -1428,11 +1611,19 @@ FString ULlamaComponent::MakeSystemsBlock()
 		else str += FString::Printf(TEXT("%s.B: NULL.%d\n"), *seg->GetName(), seg->GetPortB());
 	
 	}
+#else // !FULL_SYSTEMS_DESC_IN_CONTEXT
+	FString str = "\nSUBMARINE SYSTEMS:";
+	for (const ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers)
+	{
+		str += " " + Handler->GetSystemName();
+	}
+#endif // !FULL_SYSTEMS_DESC_IN_CONTEXT
 	return str;
 }
 
 FString ULlamaComponent::MakeStatusBlock()
 {
+#ifdef FULL_SYSTEMS_DESC_IN_CONTEXT
 	FString str = "\nSUBMARINE SYSTEMS STATUS:\n";
 // & queryEntireState - changes by command
 // & per-junction status, power usage and noise - changes by command or damage or auto
@@ -1460,11 +1651,11 @@ FString ULlamaComponent::MakeStatusBlock()
 					break;
 			}
 			if (pj->IsPowerSource()) {
-				str += FString::Printf(TEXT(" POWER AVAILABLE=%.f"), pj->GetPowerAvailable());
+				str += FString::Printf(TEXT(" POWER AVAILABLE=%g"), pj->GetPowerAvailable());
 			} else {
-				str += FString::Printf(TEXT(" POWER USAGE=%.f"), pj->GetCurrentPowerUsage());
+				str += FString::Printf(TEXT(" POWER USAGE=%g"), pj->GetCurrentPowerUsage());
 			}
-			str += FString::Printf(TEXT(" NOISE=%.f"), pj->GetCurrentNoiseLevel());
+			str += FString::Printf(TEXT(" NOISE=%g"), pj->GetCurrentNoiseLevel());
 			str += "\n";
 			// queried state
 			TArray<FString> qs = Handler->QueryEntireState();
@@ -1484,12 +1675,12 @@ FString ULlamaComponent::MakeStatusBlock()
 			for (int i=0; i < JPath.Num(); i++) {
 				if (i > 0) str += ":";
 				str += JPath[i]->GetSystemName();
-				str += ":";
-				if (PPath.Num() > i) str += PPath[i]->GetName();
-				else str += "<PATH MISSING>";
+				if (PPath.Num() > i) str += ":" + PPath[i]->GetName();
+				else if (PPath.Num() < i) str += "<PATH MISSING>";
 			}
 			str += "\n";
 		}
+//break;		// TESTING because this is too long
 	}
 // & per-segment status and power usage/direction - changes by command or damage or auto
 	str += "\nPOWER GRID SEGMENTS STATUS:\n";
@@ -1507,11 +1698,14 @@ FString ULlamaComponent::MakeStatusBlock()
 				str += " OPENED";
 				break;
 		}
-		str += FString::Printf(TEXT(" POWER=%.f"), seg->GetPowerLevel());
-//		str += FString::Printf(TEXT(" DIRECTION=%.f"), seg->GetPowerFlowDirection());
+		str += FString::Printf(TEXT(" POWER=%g"), seg->GetPowerLevel());
+//		str += FString::Printf(TEXT(" DIRECTION=%g"), seg->GetPowerFlowDirection());
 		str += "\n";
 	}
 	return str;
+#else // !FULL_SYSTEMS_DESC_IN_CONTEXT
+	return "SUBMARINE SYSTEMS STATUS CONTAINED IN SYSTEMS INFO\n";
+#endif // !FULL_SYSTEMS_DESC_IN_CONTEXT
 }
 
 void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor)		// called by VisualTestHarnessActor::BeginPlay because it is first
@@ -1527,10 +1721,28 @@ void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessA
 	}
 	else UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: HarnessActor not found. Llama not initialized."));
 
-    if (LlamaInternal && !PathToModel.IsEmpty() && !SystemPromptText.IsEmpty()) {
+	UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::ActivateLlamaComponent."));
+
+    if (LlamaInternal && !PathToModel.IsEmpty() && !SystemPromptFileName.IsEmpty()) {
+        FString LoadedSystemPrompt;
+        // FString SystemPromptFilePath = FPaths::ProjectContentDir() / TEXT("AIXO_Prompts/SystemPrompt_AIXO.txt");
+        // Or, if you want to make the filename a UPROPERTY:
+        FString SystemPromptFilePath = FPaths::ProjectContentDir() / SystemPromptFileName; // Where SystemPromptFileName is an FString UPROPERTY
+
+        if (FFileHelper::LoadFileToString(LoadedSystemPrompt, *SystemPromptFilePath))
+        {
+            UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Successfully loaded system prompt from: %s"), *SystemPromptFilePath);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: FAILED to load system prompt from: %s. Using default or empty."), *SystemPromptFilePath);
+            // LoadedSystemPrompt will be empty or you can set a fallback default here:
+            // LoadedSystemPrompt = TEXT("<|im_start|>system\nDefault fallback prompt if file fails to load.<|im_end|>\n");
+        }
+
         // Marshal the initialization call to the Llama thread
         FString ModelPathCopy = PathToModel;
-        FString SystemPromptCopy = SystemPromptText;
+        FString SystemPromptCopy = LoadedSystemPrompt;
 		FString SystemsContextBlock;
 		FString LowFreqContextBlock;
         // TODO: this is where to add to the static system prompt, need access to the VisualTestHarnessActor and SubmarineState
@@ -1552,15 +1764,22 @@ void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessA
 //SystemPromptCopy = "System Prompt\n";//You are AIXO, operating a submarine with Captain. This is the System Prompt. It's not very long.\n";
 //SystemsContextBlock = "Static World Info\n";//"Systems string\nalso not long\n";
 //LowFreqContextBlock = "Low Frequency\n";//"LowFreq string\nalso not very long\n";
+LowFreqContextBlock = "";		// TESTING because this changes quickly, as soon as the propagator runs
 
 		SystemsContextBlockRecent = SystemsContextBlock;
 		LowFreqContextBlockRecent = LowFreqContextBlock;
+
         LlamaInternal->qMainToLlama.enqueue([this, ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock]() {
+	UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::ActivateLlamaComponent calling InitializeLlama_LlamaThread."));
             LlamaInternal->InitializeLlama_LlamaThread(ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock /*, other params */);
         });
     } else {
-        UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: PathToModel or SystemPromptText is empty. Llama not initialized."));
+        UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: PathToModel or SystemPromptFileName is empty. Llama not initialized."));
     }
+    
+//    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: [0]\n%s\n"), *MakeCommandHandlerString(HarnessActor->CmdDistributor.CommandHandlers[0]));
+//    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: [1]\n%s\n"), *MakeCommandHandlerString(HarnessActor->CmdDistributor.CommandHandlers[1]));
+
 }
 
 void ULlamaComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -1576,25 +1795,105 @@ void ULlamaComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
     Super::EndPlay(EndPlayReason);
 }
 
-void ULlamaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
+//void ULlamaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+//{
+//    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+//    if (LlamaInternal) {
+//        // Process any callbacks from the Llama thread that are pending for the main thread
+//        while(LlamaInternal->qLlamaToMain.processQ());
+//
+////		FString SystemsContextBlock = MakeSystemsBlock();
+////		FString LowFreqContextBlock = MakeStatusBlock();
+////		if (SystemsContextBlockRecent != SystemsContextBlock) {
+////			UE_LOG(LogTemp, Warning, TEXT("SystemsContextBlockRecent != SystemsContextBlock: '%s' != '%s'"), *SystemsContextBlockRecent, *SystemsContextBlock);
+////			UpdateContextBlock(ELlamaContextBlockType::StaticWorldInfo, SystemsContextBlock);
+////			SystemsContextBlockRecent = SystemsContextBlock;
+////		}
+////		if (LowFreqContextBlockRecent != LowFreqContextBlock) {
+////			UE_LOG(LogTemp, Warning, TEXT("LowFreqContextBlockRecent != LowFreqContextBlock: '%s' != '%s'"), *LowFreqContextBlockRecent, *LowFreqContextBlock);
+////			UpdateContextBlock(ELlamaContextBlockType::LowFrequencyState, LowFreqContextBlock);
+////			LowFreqContextBlockRecent = LowFreqContextBlock;
+////		}
+//    }
+//}
+void ULlamaComponent::TickComponent(float DeltaTime,
+                               enum ELevelTick TickType,
+                               FActorComponentTickFunction* ThisTickFunction) {
+//    UE_LOG(LogTemp, Verbose, TEXT("ULlamaComponent::TickComponent CALLED")); // Check if this appears
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-    if (LlamaInternal) {
-        // Process any callbacks from the Llama thread that are pending for the main thread
-        while(LlamaInternal->qLlamaToMain.processQ());
 
-//		FString SystemsContextBlock = MakeSystemsBlock();
-//		FString LowFreqContextBlock = MakeStatusBlock();
-//		if (SystemsContextBlockRecent != SystemsContextBlock) {
-//			UE_LOG(LogTemp, Warning, TEXT("SystemsContextBlockRecent != SystemsContextBlock: '%s' != '%s'"), *SystemsContextBlockRecent, *SystemsContextBlock);
-//			UpdateContextBlock(ELlamaContextBlockType::StaticWorldInfo, SystemsContextBlock);
-//			SystemsContextBlockRecent = SystemsContextBlock;
-//		}
-//		if (LowFreqContextBlockRecent != LowFreqContextBlock) {
-//			UE_LOG(LogTemp, Warning, TEXT("LowFreqContextBlockRecent != LowFreqContextBlock: '%s' != '%s'"), *LowFreqContextBlockRecent, *LowFreqContextBlock);
-//			UpdateContextBlock(ELlamaContextBlockType::LowFrequencyState, LowFreqContextBlock);
-//			LowFreqContextBlockRecent = LowFreqContextBlock;
-//		}
+	if (LlamaInternal) {
+		// UE_LOG(LogTemp, Verbose, TEXT("ULlamaComponent::TickComponent - LlamaInternal is VALID. Processing qLlamaToMain."));
+		while(LlamaInternal->qLlamaToMain.processQ());
+	} else {
+		UE_LOG(LogTemp, Error, TEXT("ULlamaComponent::TickComponent - LlamaInternal IS NULL!"));
+	}
+
+    if (bIsLlamaCoreReady) { // Or some other condition to start broadcasting perf
+//        FPerformanceUIPayload PerfPayload;
+//        PerfPayload.LlamaMetrics = LastLlamaMetrics; // Use the latest received
+//
+//        PerfPayload.GameMetrics.FrameTimeMs = GetWorld()->GetDeltaSeconds() * 1000.0f;
+//        // Getting accurate GameThread, RenderThread, GpuTime can be complex and involve stats system
+//        // For a start, FrameTimeMs is good.
+//        // For more detailed stats, look into FEnginePerformanceTimers or the "Stat Unit" data.
+//        // Example for GPU time (can be latent):
+//        PerfPayload.GameMetrics.GpuTimeMs = FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles(0)); // Might need specific RHI
+//
+//        if (OnPerformanceDataUpdatedDelegate.IsBound()) {
+//            OnPerformanceDataUpdatedDelegate.Broadcast(PerfPayload);
+//        }
+
+
+// TODO: update the PerfPayload with per-tick measurements
+/*
+        FPerformanceUIPayload PerfPayload;
+        PerfPayload.LlamaMetrics = LastLlamaMetrics; // LastLlamaMetrics is updated by ForwardLlamaMetricsToGameThread
+
+        PerfPayload.GameMetrics.FrameTimeMs = GetWorld()->GetDeltaSeconds() * 1000.0f;
+        // For GPU time, ensure RHIGetGPUFrameCycles is giving non-zero results if used.
+        PerfPayload.GameMetrics.GpuTimeMs = FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()); // Pass GFrameNumber or 0
+
+        // **** LOG PerfPayload BEFORE BROADCAST ****
+        UE_LOG(LogTemp, Warning, TEXT("ULlamaComponent::Tick - Broadcasting Perf - Frame:%.2f, PromptEval:%.2f, LLMTokensGen: %d"),
+            PerfPayload.GameMetrics.FrameTimeMs,
+            PerfPayload.LlamaMetrics.PromptEvalTimeMs,
+            PerfPayload.LlamaMetrics.TokensGenerated);
+*/
+    }
+
+    if (bIsLlamaCoreReady && HarnessActor) {
+        FString CurrentSystemsBlock = MakeSystemsBlock();
+        if (SystemsContextBlockRecent != CurrentSystemsBlock) {
+            bPendingStaticWorldInfoUpdate = true;
+            PendingStaticWorldInfoText = CurrentSystemsBlock;
+        }
+
+        FString CurrentLowFreqBlock = MakeStatusBlock();
+        if (LowFreqContextBlockRecent != CurrentLowFreqBlock) {
+            bPendingLowFrequencyStateUpdate = true;
+            PendingLowFrequencyStateText = CurrentLowFreqBlock;
+        }
+
+        // Attempt to send pending updates if Llama is not busy
+        if (!bIsLlamaGenerating.load(std::memory_order_acquire)) { // Check the flag
+            if (bPendingStaticWorldInfoUpdate) {
+                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: StaticWorldInfo changed. Queuing update NOW."));
+                UpdateContextBlock(ELlamaContextBlockType::StaticWorldInfo, PendingStaticWorldInfoText);
+                SystemsContextBlockRecent = PendingStaticWorldInfoText; // Mark as sent
+                bPendingStaticWorldInfoUpdate = false;
+            }
+            if (bPendingLowFrequencyStateUpdate) {
+                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: LowFrequencyState changed. Queuing update NOW."));
+                UpdateContextBlock(ELlamaContextBlockType::LowFrequencyState, PendingLowFrequencyStateText);
+                LowFreqContextBlockRecent = PendingLowFrequencyStateText; // Mark as sent
+                bPendingLowFrequencyStateUpdate = false;
+            }
+        } else {
+            if (bPendingStaticWorldInfoUpdate || bPendingLowFrequencyStateUpdate) {
+                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Llama is busy, context updates deferred."));
+            }
+        }
     }
 }
 
@@ -1606,6 +1905,37 @@ void ULlamaComponent::UpdateContextBlock(ELlamaContextBlockType BlockType, const
             LlamaInternal->UpdateContextBlock_LlamaThread(BlockType, TextCopy);
         });
     }
+}
+
+std::string ULlamaComponent::MakeHFSString()
+{
+	ASubmarineState *ss = HarnessActor->SubmarineState;
+	std::string str;// = "\nSUBMARINE STATE:";
+	str += "\nLOCATION: " + std::to_string(ss->SubmarineLocation.X) + "," +
+	std::to_string(ss->SubmarineLocation.Y) + "," +
+	std::to_string(ss->SubmarineLocation.Z);
+	str += "\nROTATION: " + std::to_string(ss->SubmarineRotation.Pitch) + "," +
+	std::to_string(ss->SubmarineRotation.Yaw) + "," +
+	std::to_string(ss->SubmarineRotation.Roll);
+	str += "\nVELOCITY: " + std::to_string(ss->Velocity.X) + "," +
+	std::to_string(ss->Velocity.Y) + "," +
+	std::to_string(ss->Velocity.Z);
+	str += "\nLOXLEVEL: " + std::to_string(ss->LOXLevel);
+	str += "\nFLASK1LEVEL: " + std::to_string(ss->Flask1Level);
+	str += "\nFLASK2LEVEL: " + std::to_string(ss->Flask1Level);
+	str += "\nBATTERY1LEVEL: " + std::to_string(ss->Battery1Level);
+	str += "\nBATTERY2LEVEL: " + std::to_string(ss->Battery2Level);
+	str += "\nALERTLEVEL: " + std::string(TCHAR_TO_UTF8(*ss->AlertLevel));
+	str += "\nRUDDERANGLE: " + std::to_string(ss->RudderAngle);
+	str += "\nELEVATORANGLE: " + std::to_string(ss->ElevatorAngle);
+	str += "\nRIGHTBOWPLANEANGLE: " + std::to_string(ss->RightBowPlanesAngle);
+	str += "\nLEFTBOWPLANEANGLE: " + std::to_string(ss->LeftBowPlanesAngle);
+	str += "\nFORWARDMBTLEVEL: " + std::to_string(ss->ForwardMBTLevel);
+	str += "\nREARMBTLEVEL: " + std::to_string(ss->RearMBTLevel);
+	str += "\nFORWARDTBTLEVEL: " + std::to_string(ss->ForwardTBTLevel);
+	str += "\nREARTBTLEVEL: " + std::to_string(ss->RearTBTLevel);
+	str += "\n\n";
+	return str;
 }
 
 void ULlamaComponent::ProcessInput(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint)
@@ -1628,31 +1958,7 @@ void ULlamaComponent::ProcessInput(const FString& InputText, const FString& High
         if (HarnessActor) {
         	ASubmarineState *ss = HarnessActor->SubmarineState;
 
-        	std::string str;// = "\nSUBMARINE STATE:";
-        	str += "\nLOCATION: " + std::to_string(ss->SubmarineLocation.X) + "," +
-        	std::to_string(ss->SubmarineLocation.Y) + "," +
-        	std::to_string(ss->SubmarineLocation.Z);
-        	str += "\nROTATION: " + std::to_string(ss->SubmarineRotation.Pitch) + "," +
-        	std::to_string(ss->SubmarineRotation.Yaw) + "," +
-        	std::to_string(ss->SubmarineRotation.Roll);
-        	str += "\nVELOCITY: " + std::to_string(ss->Velocity.X) + "," +
-        	std::to_string(ss->Velocity.Y) + "," +
-        	std::to_string(ss->Velocity.Z);
-        	str += "\nLOXLEVEL: " + std::to_string(ss->LOXLevel);
-        	str += "\nFLASK1LEVEL: " + std::to_string(ss->Flask1Level);
-        	str += "\nFLASK2LEVEL: " + std::to_string(ss->Flask1Level);
-        	str += "\nBATTERY1LEVEL: " + std::to_string(ss->Battery1Level);
-        	str += "\nBATTERY2LEVEL: " + std::to_string(ss->Battery2Level);
-        	str += "\nALERTLEVEL: " + std::string(TCHAR_TO_UTF8(*ss->AlertLevel));
-        	str += "\nRUDDERANGLE: " + std::to_string(ss->RudderAngle);
-        	str += "\nELEVATORANGLE: " + std::to_string(ss->ElevatorAngle);
-        	str += "\nRIGHTBOWPLANEANGLE: " + std::to_string(ss->RightBowPlanesAngle);
-        	str += "\nLEFTBOWPLANEANGLE: " + std::to_string(ss->LeftBowPlanesAngle);
-        	str += "\nFORWARDMBTLEVEL: " + std::to_string(ss->ForwardMBTLevel);
-        	str += "\nREARMBTLEVEL: " + std::to_string(ss->RearMBTLevel);
-        	str += "\nFORWARDTBTLEVEL: " + std::to_string(ss->ForwardTBTLevel);
-        	str += "\nREARTBTLEVEL: " + std::to_string(ss->RearTBTLevel);
-        	str += "\n\n";
+        	std::string str = MakeHFSString();
         	
         	HFSCopy += UTF8_TO_TCHAR(str.c_str());
         }
@@ -1672,13 +1978,27 @@ void ULlamaComponent::TriggerFullContextDump()
     }
 }
 
-void ULlamaComponent::ForwardContextUpdateToGameThread(const FContextVisPayload& Payload)
+void ULlamaComponent::ForwardContextUpdateToGameThread(const FContextVisPayload& LlamaThreadPayload)
 {
+//	UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread was called."));
     // This function is now executing on the Game Thread.
     // It's safe to broadcast a delegate that UMG widgets are bound to.
     if (OnLlamaContextChangedDelegate.IsBound())
     {
-        OnLlamaContextChangedDelegate.Broadcast(Payload);
+        FContextVisPayload FinalPayload = LlamaThreadPayload; // Copy
+        FinalPayload.bIsStaticWorldInfoUpToDate = !bPendingStaticWorldInfoUpdate; // If pending, it's not up-to-date on Llama thread yet
+        FinalPayload.bIsLowFrequencyStateUpToDate = !bPendingLowFrequencyStateUpdate;
+        FinalPayload.bIsLlamaCoreActuallyReady = this->bIsLlamaCoreReady;
+        FinalPayload.bIsLlamaCurrentlyIdle = this->bIsLlamaCoreReady && !this->bIsLlamaGenerating.load(std::memory_order_acquire);
+
+//    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Forwarding to UI. PendingSWI: %d (UpToDate: %d), PendingLFS: %d (UpToDate: %d), CoreReady: %d, IsGenerating: %d (Idle: %d)"),
+//        bPendingStaticWorldInfoUpdate, FinalPayload.bIsStaticWorldInfoUpToDate,
+//        bPendingLowFrequencyStateUpdate, FinalPayload.bIsLowFrequencyStateUpToDate,
+//        FinalPayload.bIsLlamaCoreActuallyReady,
+//        this->bIsLlamaGenerating.load(std::memory_order_acquire), FinalPayload.bIsLlamaCurrentlyIdle
+//    );
+
+        OnLlamaContextChangedDelegate.Broadcast(FinalPayload);
 //		UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread OnLlamaContextChangedDelegate."));
     }
     else
@@ -1686,4 +2006,177 @@ void ULlamaComponent::ForwardContextUpdateToGameThread(const FContextVisPayload&
         // Optional: Log if no one is listening, though often widgets might bind/unbind dynamically.
         // UE_LOG(LogTemp, Verbose, TEXT("ULlamaComponent: OnLlamaContextChangedDelegate broadcast, but no listeners."));
     }
+}
+
+FString ULlamaComponent::MakeCommandHandlerString(ICommandHandler *ich) {
+	FString str;
+	ICommandHandler *FoundHandler = ich;
+	if (FoundHandler)
+	{
+		const ICH_PowerJunction *pj = FoundHandler->GetAsPowerJunction();
+		str += "**SYSTEM:" + FoundHandler->GetSystemName() + "\n";
+		if (pj && pj->IsPowerSource()) str += "POWER_SOURCE:true\n";
+		else str += "POWER_SOURCE:false\n";
+		if (pj) {
+			switch (pj->GetStatus()) {
+				case EPowerJunctionStatus::NORMAL:
+					str += "STATUS:NORMAL\n";
+					break;
+				case EPowerJunctionStatus::DAMAGED50:
+					str += "STATUS:50%% DAMAGED\n";
+					break;
+				case EPowerJunctionStatus::DAMAGED100:
+					str += "STATUS:DAMAGED\n";
+					break;
+				case EPowerJunctionStatus::DESTROYED:
+					str += "STATUS:DESTROYED\n";
+					break;
+			}
+			if (pj->IsPowerSource()) {
+				str += FString::Printf(TEXT("POWER_AVAILABLE:%g\n"), pj->GetPowerAvailable());
+			} else {
+				str += FString::Printf(TEXT("POWER_USAGE:%g\n"), pj->GetCurrentPowerUsage());
+			}
+			str += FString::Printf(TEXT("NOISE:%g\n"), pj->GetCurrentNoiseLevel());
+		}
+		FString gd = FoundHandler->GetSystemGuidance();
+		if (gd.Len() > 0) str += "GUIDANCE: " + gd + "\n";
+		FString st = FoundHandler->GetSystemStatus();
+		if (st.Len() > 0) str += "STATUS: " + st + "\n";
+		TArray<FString> cm = FoundHandler->GetAvailableCommands();
+		if (cm.Num() > 0) {
+			str += "*COMMANDS:\n";
+			for (FString& s : cm) str += s + "\n";
+		}
+		TArray<FString> qr = FoundHandler->GetAvailableQueries();
+		if (qr.Num() > 0) {
+			str += "*QUERIES:";
+			for (FString& s : qr) str += " " + s;
+			str += "\n";
+		}
+		//
+		if (pj) {
+			str += "*PORTS:\n";
+			for (int i=0; i<pj->Ports.Num(); i++) {
+				PWR_PowerSegment *seg = pj->Ports[i];
+				str += seg->GetName();
+				str += ":";
+				ICH_PowerJunction *other_junction = seg->GetJunctionA();
+				int32 other_pin = seg->GetPortA();
+				if (pj == other_junction) {
+					other_junction = seg->GetJunctionB();
+					other_pin = seg->GetPortB();
+				}
+				str += other_junction->GetSystemName();
+				str += ".";
+				str += FString::Printf(TEXT("%d"), other_pin);
+				str += "\n";
+			}
+		}
+		//
+		str += "*STATE:\n";
+		str += FString::Join(FoundHandler->QueryEntireState(), TEXT("\n"));
+		str += "\n";
+		//
+		if (pj) {
+			str += "*POWER_PATH:";
+			const TArray<PWR_PowerSegment*> PPath = pj->GetPathToSourceSegments();
+			const TArray<ICH_PowerJunction*> JPath = pj->GetPathToSourceJunction();
+			for (int i=0; i < JPath.Num(); i++) {
+				if (i > 0) str += ":";
+				str += JPath[i]->GetSystemName();
+				if (PPath.Num() > i) str += ":" + PPath[i]->GetName();
+				else if (PPath.Num() < i) str += "<PATH MISSING>";
+			}
+			str += "\n";
+		}
+		//
+		if (pj) {
+			str += "*PORT_STATE:\n";
+			for (int i=0; i<pj->Ports.Num(); i++) {
+				const PWR_PowerSegment *seg = pj->Ports[i];
+				if (!pj->IsPortEnabled(i)) str += "#";
+				switch (seg->GetStatus()) {
+					case EPowerSegmentStatus::NORMAL:
+						str += "STATUS:NORMAL";
+						break;
+					case EPowerSegmentStatus::SHORTED:
+						str += "STATUS:SHORTED";
+						break;
+					case EPowerSegmentStatus::OPENED:
+						str += "STATUS:OPENED";
+						break;
+				}
+				str += FString::Printf(TEXT(" POWER:%g"), seg->GetPowerLevel());
+//				str += FString::Printf(TEXT(" DIRECTION:%g"), seg->GetPowerFlowDirection());
+				str += "\n";
+			}
+		}
+	}
+	return str;
+}
+
+
+
+
+// This function is called by the lambda queued from Internal::Llama::toolCallCb
+void ULlamaComponent::HandleToolCall_QuerySubmarineSystem(const FString& QueryString)
+{
+    if (!HarnessActor) {
+        SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
+        return;
+    }
+
+    // Parse the QueryString: "SYSTEM_NAME QUERY_TYPE"
+    // Example: "CAMERA CAPABILITIES", "ELECTROLYZER STATUS_DETAILS"
+    FString SystemName;
+    FString QueryType;
+    FString TempQueryString = QueryString.TrimStartAndEnd();
+
+    if (!TempQueryString.Split(TEXT(" "), &SystemName, &QueryType, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+        // If only one word, assume it's the system name and default to STATUS_DETAILS or a general info dump
+        SystemName = TempQueryString;
+        QueryType = TEXT("STATUS_DETAILS"); // Default query type
+        if (SystemName.IsEmpty()) {
+             SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Invalid query_string format. Expected SYSTEM_NAME QUERY_TYPE or just SYSTEM_NAME.\"}"));
+            return;
+        }
+    }
+    QueryType = QueryType.TrimStartAndEnd().ToUpper(); // Normalize query type
+
+    UE_LOG(LogTemp, Log, TEXT("ToolCall: QuerySubmarineSystem - System: '%s', Type: '%s'"), *SystemName, *QueryType);
+
+    ICommandHandler* FoundHandler = nullptr;
+    for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
+        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
+            FoundHandler = Handler;
+            break;
+        }
+    }
+
+    if (!FoundHandler) {
+        SendToolResponseToLlama(TEXT("query_submarine_system"), 
+            FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
+        return;
+    }
+
+//- 'commands' is a list of: "ASPECT VERB <VALUE>" separated by '\\n'. To execute a command, use "SYSTEM_NAME.ASPECT VERB <VALUE>".
+//- 'queries' is a list of: "ASPECT" separated by ' '. To execute a query, use "SYSTEM_NAME.ASPECT".
+//- 'connections' is a list of: "<segment_name>:<other_junction_name>.<other_junction_pin_#>".
+//- 'power_path' use: "<source_junction>:<segment1>:<junction2>...:<this_system_name>".
+//- 'state' is a list of: "ASPECT VERB <ACTUAL VALUE>" representing the state of the system.
+//- 'port_state' is a list of: "STATUS:<status> POWER:<power>" for each port. <status> is NORMAL, SHORTED or OPENED. <power> is units moving through the port. Prefix with "#" if the port is disabled.
+
+	FString str = MakeCommandHandlerString(FoundHandler);
+
+    SendToolResponseToLlama(TEXT("query_submarine_system"), str);
+}
+
+void ULlamaComponent::SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent)
+{
+    // Format according to how your LLM expects tool responses (e.g., Qwen's <|im_start|>tool...)
+    // This is the CONTENT that goes inside the tool role tags.
+    // The ProcessInputAndGenerate_LlamaThread will wrap it with <|im_start|>tool ... <|im_end|>
+    UE_LOG(LogTemp, Log, TEXT("Sending Tool Response for '%s': %s"), *ToolName, *JsonResponseContent);
+    ProcessInput(JsonResponseContent, TEXT(""), TEXT("tool"));
 }

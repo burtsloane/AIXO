@@ -10,6 +10,7 @@
 #include <functional>
 #include <mutex>
 #include "llama.h"
+#include "ICommandHandler.h"
 //#include "VisualTestHarnessActor.h"
 
 #include "ContextVisualizationData.h"
@@ -100,7 +101,8 @@ namespace Internal
 		void DetokenizeAndAppend(std::string& TargetString, const std::vector<llama_token>& TokensToDetokenize, const llama_model* ModelHandle);
 		std::string CleanString(std::string p_str);
 		void RebuildFlatConversationHistoryTokensFromStructured();
-		void BroadcastContextVisualUpdate_LlamaThread();
+		void BroadcastContextVisualUpdate_LlamaThread(int32 nTokens=0, float msDecode=0.0f, float msGenerate=0.0f);
+		void LlamaLogContext(FString Label);
 
         std::function<void(FString)> tokenCb;
         std::function<void(FString)> fullContextDumpCb;
@@ -200,11 +202,15 @@ public:
     virtual void BeginPlay() override; // Changed from Activate for standard UE lifecycle
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Changed from Deactivate
     virtual void TickComponent(float DeltaTime,
-                               ELevelTick TickType,
+                               enum ELevelTick TickType,
                                FActorComponentTickFunction* ThisTickFunction) override;
 
 	void ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor);
 	void ForwardContextUpdateToGameThread(const FContextVisPayload& Payload);
+	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
+	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
+	std::string MakeHFSString();
+	FString MakeCommandHandlerString(ICommandHandler *ich);
 
     // Delegates
     UPROPERTY(BlueprintAssignable)
@@ -234,7 +240,7 @@ public:
     FString PathToModel; // Renamed from pathToModel
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
-    FString SystemPromptText; // Renamed from prompt
+    FString SystemPromptFileName; // Renamed from prompt
 
     // UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Llama|Config")
     // std::vector<FString> StopSequences; // Renamed from stopSequences - this will be handled by system prompt now
@@ -257,4 +263,27 @@ private:
 	FString LowFreqContextBlockRecent;
 	FString MakeSystemsBlock();
 	FString MakeStatusBlock();
+
+private:
+    bool bPendingStaticWorldInfoUpdate = false;
+    FString PendingStaticWorldInfoText;
+    bool bPendingLowFrequencyStateUpdate = false;
+    FString PendingLowFrequencyStateText;
+
+    // Add a flag the Llama thread can set when it becomes idle
+    // This needs to be atomic or protected if ULlamaComponent Tick reads it
+    // while Llama thread writes it.
+    // However, it's safer if Llama thread signals idle via qLlamaToMain.
+public:
+    std::atomic<bool> bIsLlamaGenerating; // This can be set by Llama thread via a callback
+                                         // when it starts/stops generation.
+
+    UFUNCTION(BlueprintPure, Category = "Llama")
+    bool IsLlamaBusy() const { return bIsLlamaGenerating.load(std::memory_order_acquire); }
+
+    UFUNCTION(BlueprintPure, Category = "Llama")
+    bool IsLlamaReady() const { return bIsLlamaCoreReady; } // You already have bIsLlamaCoreReady
+
+	public: void SetIsLlamaGenerating_MainThread(bool bNewState) { bIsLlamaGenerating = bNewState; }
 };
+

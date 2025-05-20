@@ -54,6 +54,12 @@ private:
     int32 CachedTotalCapacity = 32768;
     UPROPERTY()
     int32 CachedKvCacheCount = 0;
+    bool bCachedStaticWorldInfoUpToDate = true;
+    bool bCachedLowFrequencyStateUpToDate = false;
+    bool bCachedIsLlamaCoreActuallyReady = false;
+    bool bCachedIsLlamaCurrentlyIdle = false;
+    float CachedmsPerTokenDecode = 0.0f;
+    float CachedmsPerTokenGenerate = 0.0f;
 
     // Handler function for the LlamaComponent's delegate
     UFUNCTION() // Must be UFUNCTION to bind to a dynamic multicast delegate
@@ -63,4 +69,10 @@ private:
     TArray<FContextVisBlock> GetCachedBlocks() const;
     int32 GetCachedTotalCapacity() const;
     int32 GetCachedKvCacheCount() const;
+    bool GetCachedStaticWorldInfoUpToDate() const;
+    bool GetCachedLowFrequencyStateUpToDate() const;
+    bool GetCachedIsLlamaCoreActuallyReady() const;
+    bool GetCachedIsLlamaCurrentlyIdle() const;
+    float GetCachedmsPerTokenDecode() const;
+    float GetCachedmsPerTokenGenerate() const;
 };

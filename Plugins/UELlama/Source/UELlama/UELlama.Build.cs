@@ -15,12 +15,15 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
             "Projects",   // Often needed for plugin utilities
             "UMG",        // For UUserWidget and UMG functionalities
             "Slate",      // For SWidget and higher-level Slate functionalities
-            "SlateCore"   // For core Slate types like SLeafWidget, EVisibility, brushes, etc.
+            "SlateCore",  // For core Slate types like SLeafWidget, EVisibility, brushes, etc.
+			"Json",
+            "JsonUtilities"
         });
 
         // Private dependencies (if any specific to the plugin's implementation details)
         PrivateDependencyModuleNames.AddRange(new string[] {
             // "Slate", "SlateCore", // Add if your plugin uses Slate UI directly
+            "RHI" // for GDynamicRHI and RHIGetGPUFrameCycles
         });
 //		PrivateDependencyModuleNames.AddRange(new string[] { "AIXO" /* Add your game module name here */ });
 		PrivateIncludePathModuleNames.AddRange(new string[] { "AIXO" });
@@ -32,6 +35,10 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
         // --- Include Paths for llama.cpp headers ---
         // This allows your plugin's .cpp files to #include "llama.h", "ggml.h", etc.
         PublicIncludePaths.Add(Path.Combine(LlamaCppSourcePath, "include")); // Assuming headers are in ThirdParty/llama.cpp/include/
+        PrivateIncludePaths.AddRange(new string[] {
+            Path.Combine(ModuleDirectory, "Private"),
+    		Path.GetFullPath(Path.Combine(ModuleDirectory, "ThirdParty", "llama.cpp", "include"))
+        });
         // If common.h/cpp are in a subfolder like llama.cpp/common/ and you put them in include/common/
         // PublicIncludePaths.Add(Path.Combine(LlamaCppSourcePath, "include", "common"));
 
@@ -201,7 +208,7 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
         */
 
         // Suppress specific warnings if headers from llama.cpp generate them and are noisy
-        // bEnableUndefinedIdentifierWarnings = false;
+        // ModuleRules.UndefinedIdentifierWarningLevel = false;
     }
 }
 

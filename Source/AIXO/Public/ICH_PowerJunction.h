@@ -119,6 +119,16 @@ public:
     }
 
     // Enable or disable a specific port
+    virtual bool IsPortEnabled(int32 Port) const
+    {
+        if (Port >= 0 && Port < EnabledPorts.Num())
+        {
+        	return EnabledPorts[Port];
+        }
+        return false;
+    }
+
+    // Enable or disable a specific port
     virtual void SetPortEnabled(int32 Port, bool bEnabled)
     {
         if (Port >= 0 && Port < EnabledPorts.Num())

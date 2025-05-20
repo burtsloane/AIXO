@@ -25,6 +25,75 @@ enum class EContextVisBlockType : uint8
     Unknown             UMETA(DisplayName = "Unknown Block")
 };
 
+//USTRUCT(BlueprintType)
+//struct FLlamaPerformanceMetrics
+//{
+//    GENERATED_BODY()
+//
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    float PromptEvalTimeMs = 0.0f; // Time to process prompt tokens
+////
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    float TokenGenerationTimeMs = 0.0f; // Time for the last generation pass (all tokens)
+////
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    int32 TokensGenerated = 0;
+////
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    float AvgTimePerTokenMs = 0.0f; // TokenGenerationTimeMs / TokensGenerated
+//    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+//    float PromptEvalTimeMs = 0.0f; // From llama_perf_context_data.t_p_eval_ms
+//
+//    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+//    float TokenGenerationTimeMs = 0.0f; // From llama_perf_context_data.t_eval_ms
+//
+//    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+//    int32 PromptTokensEvaluated = 0; // From llama_perf_context_data.n_p_eval
+//
+//    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+//    int32 TokensGenerated = 0; // From llama_perf_context_data.n_eval (or your manual count)
+//
+//    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+//    float SamplingTimeMs = 0.0f; // From llama_perf_sampler_data.t_sample_ms
+//
+//    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+//    int32 SamplesTaken = 0; // From llama_perf_sampler_data.n_sample
+//
+//    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+//    float AvgTimePerGeneratedTokenMs = 0.0f;
+//};
+//
+//USTRUCT(BlueprintType)
+//struct FGamePerformanceMetrics
+//{
+//    GENERATED_BODY()
+//
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    float FrameTimeMs = 0.0f;
+////
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    float GameThreadTimeMs = 0.0f;
+////
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    float RenderThreadTimeMs = 0.0f;
+////
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    float GpuTimeMs = 0.0f;
+//};
+//
+//// Modify FContextVisPayload or create a new one for performance
+//USTRUCT(BlueprintType)
+//struct FPerformanceUIPayload // New dedicated payload
+//{
+//    GENERATED_BODY()
+//
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    FLlamaPerformanceMetrics LlamaMetrics;
+////
+////    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+////    FGamePerformanceMetrics GameMetrics;
+//};
+
 // Represents a single colored segment in the visualization bar
 USTRUCT(BlueprintType)
 struct FContextVisBlock
@@ -73,6 +142,25 @@ struct FContextVisPayload
     // This is where the black line will be drawn.
     UPROPERTY(BlueprintReadWrite, Category = "ContextVis")
     int32 KvCacheDecodedTokenCount = 0;
+
+    // NEW Flags
+    UPROPERTY(BlueprintReadWrite, Category = "ContextVis")
+    bool bIsStaticWorldInfoUpToDate = true;
+
+    UPROPERTY(BlueprintReadWrite, Category = "ContextVis")
+    bool bIsLowFrequencyStateUpToDate = true;
+
+    UPROPERTY(BlueprintReadWrite, Category = "ContextVis")
+    bool bIsLlamaCoreActuallyReady = false; // From ULlamaComponent::bIsLlamaCoreReady
+
+    UPROPERTY(BlueprintReadWrite, Category = "ContextVis")
+    bool bIsLlamaCurrentlyIdle = false; // From !ULlamaComponent::bIsLlamaGenerating
+
+    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+    float fFmsPerTokenDecode = 0.0f;
+
+    UPROPERTY(BlueprintReadWrite, Category = "Perf")
+    float fFmsPerTokenGenerate = 0.0f;
 
     // Optional: Total tokens currently represented by the blocks (Fixed + Convo + HFS)
     // This might be different from KvCacheDecodedTokenCount if not all of it is in KV yet.
