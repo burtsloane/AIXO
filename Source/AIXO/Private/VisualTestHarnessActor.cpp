@@ -53,6 +53,7 @@
 #include "SS_Rudder.h"
 #include "SS_SolarPanels.h"
 #include "SS_Sonar.h"
+#include "SS_TBT.h"
 #include "SS_TorpedoLoader.h"
 #include "SS_TorpedoTube.h"
 
@@ -636,9 +637,9 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         else if (ActiveTouches.Num() == 0)
         {
             // Not over a junction, start pan if in empty space
-            bool bInEmptySpace = IsPointInEmptySpace(DiagramPosition);
-            UE_LOG(LogTemp, Log, TEXT("  Touch began: InEmptySpace=%d"), bInEmptySpace);
-            if (bInEmptySpace)
+//            bool bInEmptySpace = IsPointInEmptySpace(DiagramPosition);
+//            UE_LOG(LogTemp, Log, TEXT("  Touch began: InEmptySpace=%d"), bInEmptySpace);
+//            if (bInEmptySpace)
             {
                 bIsPanning = true;
                 // Store initial touch info
@@ -992,9 +993,9 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	tt->MarkerX = TEXT("XC");
 	tt->MarkerY = TEXT("Y1");
 	CmdDistributor.RegisterHandler(tt);
-	SS_FTBTPump *ftp = new SS_FTBTPump("FTBTPUMP", SubmarineState.Get(), XC+150, Y1+30, 150, 24);
-	ftp->MarkerX = TEXT("XC");
-	CmdDistributor.RegisterHandler(ftp);
+//	SS_FTBTPump *ftp = new SS_FTBTPump("FTBTPUMP", SubmarineState.Get(), XC+150, Y1+30, 150, 24);
+//	ftp->MarkerX = TEXT("XC");
+//	CmdDistributor.RegisterHandler(ftp);
 		
 	PWRJ_MultiConnJunction *mfjL = new PWRJ_MultiConnJunction("L1", SubmarineState.Get(), XC+55+30, Y1, 20, 51);
 	mfjL->MarkerX = TEXT("XC");
@@ -1002,7 +1003,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	CmdDistributor.RegisterHandler(mfjL);
 	MakeConnectingSegment("lf_feed", mfjL, 0, 10, mfj, 1, 30);
 	MakeConnectingSegment("ttl_feed", mfjL, 3, 10, tt, 1, 8+4);
-	MakeConnectingSegment("ftpl_feed", mfjL, 3, 42, ftp, 1, 8+4);
+//	MakeConnectingSegment("ftpl_feed", mfjL, 3, 42, ftp, 1, 8+4);
 
 	PWRJ_MultiConnJunction *mfjR = new PWRJ_MultiConnJunction("R1", SubmarineState.Get(), XC+375-30, Y1, 20, 51);
 	mfjR->MarkerX = TEXT("XC");
@@ -1010,35 +1011,35 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	CmdDistributor.RegisterHandler(mfjR);
 	MakeConnectingSegment("rf_feed", mfjR, 0, 10, mfj, 3, 30);
 	MakeConnectingSegment("ttr_feed", mfjR, 1, 10, tt, 3, 8+4);
-	MakeConnectingSegment("ftpr_feed", mfjR, 1, 42, ftp, 3, 8+4);
+//	MakeConnectingSegment("ftpr_feed", mfjR, 1, 42, ftp, 3, 8+4);
 
 	int32 Y2 = Y1+79 + 15 + 10;
 	SS_Battery *b1 = new SS_Battery1("BATTERY1", SubmarineState.Get(), XC+150, Y2-4, 150, 32);
 	b1->MarkerX = TEXT("XC");
 	b1->MarkerY = TEXT("Y2");
 	CmdDistributor.RegisterHandler(b1);
-	MakeConnectingSegment("ftbt_private", ftp, 2, 75, b1, 0, 75);
+//	MakeConnectingSegment("ftbt_private", ftp, 2, 75, b1, 0, 75);
 
 	PWRJ_MultiConnJunction *mfjL2 = new PWRJ_MultiConnJunction("L2", SubmarineState.Get(), XC+55+30, Y2, 20, 24);
 	mfjL2->MarkerX = TEXT("XC");
 	mfjL2->MarkerY = TEXT("Y2");
 	CmdDistributor.RegisterHandler(mfjL2);
 	MakeConnectingSegment("l2", mfjL2, 0, 10, mfjL, 2, 10);
-	MakeConnectingSegment("b1l_feed", mfjL2, 3, 12, b1, 1, 16);
 
 	PWRJ_MultiConnJunction *mfjR2 = new PWRJ_MultiConnJunction("R2", SubmarineState.Get(), XC+375-30, Y2, 20, 24);
 	mfjR2->MarkerX = TEXT("XC");
 	mfjR2->MarkerY = TEXT("Y2");
 	CmdDistributor.RegisterHandler(mfjR2);
 	MakeConnectingSegment("r2", mfjR2, 0, 10, mfjR, 2, 10);
-	MakeConnectingSegment("b1r_feed", mfjR2, 1, 12, b1, 3, 16);
 
 	int32 Y3 = Y1+30+128+2 + 10 + 10;
 	SS_ControlRoom *cr = new SS_ControlRoom("CONTROLROOM", SubmarineState.Get(), XC+150, Y3-2, 150, 24);
 	cr->MarkerX = TEXT("XC");
 	cr->MarkerY = TEXT("Y3");
 	CmdDistributor.RegisterHandler(cr);
-	MakeConnectingSegment("cr_private", cr, 0, 75, b1, 2, 75);
+	MakeConnectingSegment("cr_private", cr, 0, 75, b1, 2, 75);		// b1 and b2 must have L and R bus as pins 1 & 2
+	MakeConnectingSegment("b1l_feed", mfjL2, 3, 12, b1, 1, 16);
+	MakeConnectingSegment("b1r_feed", mfjR2, 1, 12, b1, 3, 16);
 	SS_Airlock *al = new SS_Airlock("AIRLOCK", SubmarineState.Get(), XC+150, Y3+30, 150, 24);
 	al->MarkerX = TEXT("XC");
 	al->MarkerY = TEXT("Y3");
@@ -1203,7 +1204,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	b2->MarkerX = TEXT("XC");
 	b2->MarkerY = TEXT("Y6");
 	CmdDistributor.RegisterHandler(b2);
-	MakeConnectingSegment("b2_mm", b2, 0, 75, mm, 2, 75);
+	MakeConnectingSegment("b2_mm", b2, 0, 75, mm, 2, 75);		// b1 and b2 must have L and R bus as pins 1 & 2
 
 	PWRJ_MultiConnJunction *mfjL6 = new PWRJ_MultiConnJunction("L6", SubmarineState.Get(), XC+55+30, Y6, 20, 24);
 	mfjL6->MarkerX = TEXT("XC");
@@ -1220,11 +1221,11 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("r6_b2", mfjR6, 1, 12, b2, 3, 16);
 
 //	int32 Y7 = Y6+49 + 18 + 10;
-	SS_RTBTPump *rtp = new SS_RTBTPump("RTBTPUMP", SubmarineState.Get(), XC+150, Y7+2-4, 150, 24);
-	rtp->MarkerX = TEXT("XC");
-	rtp->MarkerY = TEXT("Y7");
-	CmdDistributor.RegisterHandler(rtp);
-	MakeConnectingSegment("b2_rtbt", b2, 2, 75, rtp, 0, 75);
+//	SS_RTBTPump *rtp = new SS_RTBTPump("RTBTPUMP", SubmarineState.Get(), XC+150, Y7+2-4, 150, 24);
+//	rtp->MarkerX = TEXT("XC");
+//	rtp->MarkerY = TEXT("Y7");
+//	CmdDistributor.RegisterHandler(rtp);
+//	MakeConnectingSegment("b2_rtbt", b2, 2, 75, rtp, 0, 75);
 	SS_ROVCharging *rov = new SS_ROVCharging("ROV", SubmarineState.Get(), XC+150, Y7+2+32-4, 150, 24);
 	rov->MarkerX = TEXT("XC");
 	rov->MarkerY = TEXT("Y7");
@@ -1235,7 +1236,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	mfjL7->MarkerY = TEXT("Y7");
 	CmdDistributor.RegisterHandler(mfjL7);
 	MakeConnectingSegment("l7", mfjL7, 0, 10, mfjL6, 2, 10);
-	MakeConnectingSegment("l7_rtbt", mfjL7, 3, 10, rtp, 1, 12);
+//	MakeConnectingSegment("l7_rtbt", mfjL7, 3, 10, rtp, 1, 12);
 	MakeConnectingSegment("l7_rov", mfjL7, 3, 42, rov, 1, 12);
 
 	PWRJ_MultiConnJunction *mfjR7 = new PWRJ_MultiConnJunction("R7", SubmarineState.Get(), XC+375-30, Y7, 20, 52);
@@ -1243,7 +1244,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	mfjR7->MarkerY = TEXT("Y7");
 	CmdDistributor.RegisterHandler(mfjR7);
 	MakeConnectingSegment("r7", mfjR7, 0, 10, mfjR6, 2, 10);
-	MakeConnectingSegment("r7_rtbt", mfjR7, 1, 10, rtp, 3, 12);
+//	MakeConnectingSegment("r7_rtbt", mfjR7, 1, 10, rtp, 3, 12);
 	MakeConnectingSegment("r7_rov", mfjR7, 1, 42, rov, 3, 12);
 
 //	int32 Y8 = Y7+50 + 18 + 10;
@@ -1331,17 +1332,29 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 
 //
 
-	SS_MBT *rmbt = new SS_MBT("RMBT", SubmarineState.Get(), XCE, YE3-14);
-	rmbt->MarkerX = TEXT("XCE");
-	rmbt->MarkerY = TEXT("YE3");
-	CmdDistributor.RegisterHandler(rmbt);
-	MakeConnectingSegment("rmbt_feed", mfEu6, 1, 10, rmbt, 3, rmbt->H/2);
-
 	SS_MBT *fmbt = new SS_MBT("FMBT", SubmarineState.Get(), XCE, YE1-14);
 	fmbt->MarkerX = TEXT("XCE");
 	fmbt->MarkerY = TEXT("YE1");
 	CmdDistributor.RegisterHandler(fmbt);
 	MakeConnectingSegment("fmbt_feed", mfEu3, 1, 10, fmbt, 3, fmbt->H/2);
+
+	SS_TBT *ftbt = new SS_TBT("FTBT", SubmarineState.Get(), XCE, YE1 + 152-14);
+	ftbt->MarkerX = TEXT("XCE");
+	ftbt->MarkerY = TEXT("YE1");
+	CmdDistributor.RegisterHandler(ftbt);
+	MakeConnectingSegment("ftbt_feed", mfEu1, 1, 10, ftbt, 3, ftbt->H/2);
+
+	SS_TBT *rtbt = new SS_TBT("RTBT", SubmarineState.Get(), XCE, YE3 - 152-14);
+	rtbt->MarkerX = TEXT("XCE");
+	rtbt->MarkerY = TEXT("YE3");
+	CmdDistributor.RegisterHandler(rtbt);
+	MakeConnectingSegment("ftbt_feed", mfEu4, 1, 10, rtbt, 3, rtbt->H/2);
+
+	SS_MBT *rmbt = new SS_MBT("RMBT", SubmarineState.Get(), XCE, YE3-14);
+	rmbt->MarkerX = TEXT("XCE");
+	rmbt->MarkerY = TEXT("YE3");
+	CmdDistributor.RegisterHandler(rmbt);
+	MakeConnectingSegment("rmbt_feed", mfEu6, 1, 10, rmbt, 3, rmbt->H/2);
 
 //
 
@@ -1356,7 +1369,7 @@ b2->SetPortEnabled(3, false);
 aip->SetPortEnabled(1, false);
 aip->SetPortEnabled(0, true);
 aip->SetPortEnabled(2, false);
-ftp->SetSelectedPort(1);
+//ftp->SetSelectedPort(1);
 mm->SetSelectedPort(1);
 
 elec->HandleCommand("ON", "SET", "true");

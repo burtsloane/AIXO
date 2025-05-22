@@ -3,12 +3,14 @@
 #include "ICommandHandler.h"
 #include "ICH_OpenClose.h"
 #include "VE_ToggleButton.h"
+#include "VE_MomentaryButton.h"
 
 class SS_MBT : public PWRJ_MultiSelectJunction {
 protected:
     ASubmarineState* SubState;
-
     ICH_OpenClose *OpenClosePart;
+	bool bIsBlowing = false;
+	bool bIsEBlowing = false;
 
 public:
 	SS_MBT(const FString& Name, ASubmarineState* InSubState, float X, float Y, float InW=120, float InH=60)
@@ -35,8 +37,6 @@ public:
 		else SubState->ForwardMBTLevel = val;
     }
 
-	bool bIsBlowing = false;
-
     virtual void UpdateChange() {
     	PostHandleCommand();
     }
@@ -46,6 +46,10 @@ public:
 //UE_LOG(LogTemp, Warning, TEXT("SS_MBT::HandleCommand: %s %s %s"), *Aspect, *Command, *Value);
         if (Aspect == "BLOW" && Command == "SET") {
         	if (GetLevel() > 0.0f) bIsBlowing = Value.ToBool();
+        	return ECommandResult::Handled;
+        }
+        if (Aspect == "EBLOW" && Command == "SET") {
+        	if (GetLevel() > 0.0f) bIsEBlowing = Value.ToBool();
         	return ECommandResult::Handled;
         }
         // Try OpenClose part first
@@ -65,12 +69,16 @@ public:
     virtual bool CanHandleCommand(const FString& Aspect, const FString& Command, const FString& Value) const override
     {
         if (Aspect == "BLOW" && Command == "SET") return true;
+        if (Aspect == "EBLOW" && Command == "SET") return true;
         return OpenClosePart->CanHandleCommand(Aspect, Command, Value) ||
                PWRJ_MultiSelectJunction::CanHandleCommand(Aspect, Command, Value);
     }
 
     virtual FString QueryState(const FString& Aspect) const override
     {
+        if (Aspect == "EBLOW") {
+        	return bIsEBlowing?"true":"false";
+        }
         if (Aspect == "BLOW") {
         	return bIsBlowing?"true":"false";
         }
@@ -87,6 +95,7 @@ public:
     virtual TArray<FString> QueryEntireState() const override
     {
         TArray<FString> Out;
+        Out.Add(FString::Printf(TEXT("EBLOW SET %s"), bIsEBlowing ? TEXT("true") : TEXT("false")));
         Out.Add(FString::Printf(TEXT("BLOW SET %s"), bIsBlowing ? TEXT("true") : TEXT("false")));
         
         // Get state from OpenClose part (Category 5)
@@ -102,6 +111,7 @@ public:
     {
         TArray<FString> Out;
         Out.Add("BLOW SET <bool>");
+        Out.Add("EBLOW SET <bool>");
         Out.Append(OpenClosePart->GetAvailableCommands());
         Out.Append(PWRJ_MultiSelectJunction::GetAvailableCommands());
         Out.Sort();
@@ -112,6 +122,7 @@ public:
     {
         TArray<FString> Queries;
         Queries.Add("BLOW");
+        Queries.Add("EBLOW");
         Queries.Append(OpenClosePart->GetAvailableQueries());
         Queries.Append(PWRJ_MultiSelectJunction::GetAvailableQueries());
         Queries.Sort();
@@ -139,6 +150,7 @@ public:
                 HandleCommand("BLOW", "SET", "false");
                 bIsBlowing = false;
                 CurrentVentRate = 0.0f;
+				UpdateChange();
 			}
     		return;
     	}
@@ -152,16 +164,27 @@ public:
 				UpdateChange();
         	}
         }
+        if (bIsEBlowing) {
+        	CurrentVentRate = -1.0f;
+        	if (TickFlask(DeltaTime * 0.2f)) {
+                HandleCommand("EBLOW", "SET", "false");
+                bIsEBlowing = false;
+                AddToNotificationQueue(FString::Printf(TEXT("%s flask %s"), *GetSystemName(), TEXT("empty")));
+				UpdateChange();
+        	}
+        }
 		float m = OpenClosePart->GetMovementAmount();
-        if ((m > 0) || bIsBlowing)
+        if ((m > 0) || bIsBlowing || bIsEBlowing)
         {
         	float d = CurrentVentRate * DeltaTime;
-			if (!bIsBlowing) d *= m;
+			if (!bIsBlowing && !bIsEBlowing) d *= m;
             float NewLevel = GetLevel() + d;
             if (NewLevel <= 0.0f)
             {
-                HandleCommand("BLOW", "SET", "false");
+                if (bIsBlowing) HandleCommand("BLOW", "SET", "false");
+                if (bIsEBlowing) HandleCommand("EBLOW", "SET", "false");
                 bIsBlowing = false;
+                bIsEBlowing = false;
                 AddToNotificationQueue(FString::Printf(TEXT("%s tank %s"), *GetSystemName(), TEXT("empty")));
                 SetLevel(0.0f);
 				UpdateChange();
@@ -184,14 +207,27 @@ public:
 	{
         FLinearColor tc = FLinearColor::Black;
         FLinearColor c = RenderBGGetColor();
+        bool showwater = true;
 		if (bIsSelected) {
 			if (((int32)(FPlatformTime::Seconds() / 0.5f)) & 1) {
 				c = FLinearColor(0.0f, 0.5f, 0.0f);		// selected color
 				tc = FLinearColor::White;
+				showwater = false;
 			}
 		}
 		//
 		FBox2D r;
+		{
+			r.Min.X = X - 80;
+			r.Min.Y = Y + H - 4;
+			r.Max.X = X;
+			r.Max.Y = r.Min.Y;
+			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
+			r.Min.Y = Y + H - 4 - 12;
+			r.Max.Y = r.Min.Y;
+			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
+		}
+		//
 		r.Min.X = X;
 		r.Min.Y = Y;
 		r.Max.X = X + W;
@@ -199,7 +235,7 @@ public:
 		Context.DrawRectangle(r, c, true);
 		FBox2D r2 = r;
 		r2.Min.Y += 60-60*GetLevel();
-		Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
+		if (showwater) Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
 		Context.DrawRectangle(r, tc, false);
 		float m = OpenClosePart->GetMovementAmount();
 		{
@@ -323,6 +359,18 @@ return;		// old
 												 TEXT("false"),			// expected value for "OFF"
 												 TEXT(""),          // Text On
 												 TEXT("BLOW")          // Text Off
+												 ));
+		ToggleBounds2.Min.X -= 16;
+		ToggleBounds2.Max.X = ToggleBounds2.Min.X + 12;
+		VisualElements.Add(new VE_MomentaryButton(this, 
+												 ToggleBounds2,
+												 TEXT("EBLOW"),      // Query Aspect
+												 TEXT("EBLOW SET true"),    // Command On
+												 TEXT("EBLOW SET false"),   // Command Off
+												 TEXT("true"),			// expected value for "ON"
+												 TEXT("false"),			// expected value for "OFF"
+												 TEXT(""),          // Text On
+												 TEXT("E")          // Text Off
 												 ));
 	}
 };

@@ -130,27 +130,6 @@
 			]
 		},
 		{
-			"Name": "FTBTPUMP",
-			"Type": "SS_FTBTPump",
-			"Position":
-			{
-				"X": 150,
-				"Y": 208,
-				"mX": "XC",
-				"mY": ""
-			},
-			"Size":
-			{
-				"W": 150,
-				"H": 24
-			},
-			"Status": "NORMAL",
-			"InitialCommands": [
-				"POWERSELECT SET 1",
-				"PUMPRATE SET 0.00"
-			]
-		},
-		{
 			"Name": "L1",
 			"Type": "PWRJ_MultiConnJunction",
 			"Position":
@@ -169,8 +148,7 @@
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
 				"POWERPORT_1 ENABLE",
-				"POWERPORT_2 ENABLE",
-				"POWERPORT_3 ENABLE"
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -192,8 +170,7 @@
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
 				"POWERPORT_1 ENABLE",
-				"POWERPORT_2 ENABLE",
-				"POWERPORT_3 ENABLE"
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -217,8 +194,7 @@
 				"POWERSELECT SET -1",
 				"POWERPORT_0 DISABLE",
 				"POWERPORT_1 DISABLE",
-				"POWERPORT_2 DISABLE",
-				"POWERPORT_3 DISABLE"
+				"POWERPORT_2 DISABLE"
 			]
 		},
 		{
@@ -466,7 +442,8 @@
 			"Status": "NORMAL",
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
-				"POWERPORT_1 ENABLE"
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -487,7 +464,8 @@
 			"Status": "NORMAL",
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
-				"POWERPORT_1 ENABLE"
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -813,8 +791,7 @@
 				"POWERSELECT SET -1",
 				"POWERPORT_0 DISABLE",
 				"POWERPORT_1 DISABLE",
-				"POWERPORT_2 DISABLE",
-				"POWERPORT_3 DISABLE"
+				"POWERPORT_2 DISABLE"
 			]
 		},
 		{
@@ -862,27 +839,6 @@
 			]
 		},
 		{
-			"Name": "RTBTPUMP",
-			"Type": "SS_RTBTPump",
-			"Position":
-			{
-				"X": 150,
-				"Y": -2,
-				"mX": "XC",
-				"mY": "Y7"
-			},
-			"Size":
-			{
-				"W": 150,
-				"H": 24
-			},
-			"Status": "NORMAL",
-			"InitialCommands": [
-				"POWERSELECT SET 2",
-				"PUMPRATE SET 0.00"
-			]
-		},
-		{
 			"Name": "ROV",
 			"Type": "SS_ROVCharging",
 			"Position":
@@ -922,8 +878,7 @@
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
 				"POWERPORT_1 ENABLE",
-				"POWERPORT_2 ENABLE",
-				"POWERPORT_3 ENABLE"
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -945,8 +900,7 @@
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
 				"POWERPORT_1 ENABLE",
-				"POWERPORT_2 ENABLE",
-				"POWERPORT_3 ENABLE"
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -1243,28 +1197,6 @@
 			]
 		},
 		{
-			"Name": "RMBT",
-			"Type": "SS_MBT",
-			"Position":
-			{
-				"X": 0,
-				"Y": 857,
-				"mX": "XCE",
-				"mY": "YE3"
-			},
-			"Size":
-			{
-				"W": 120,
-				"H": 60
-			},
-			"Status": "NORMAL",
-			"InitialCommands": [
-				"BLOW SET false",
-				"OPEN SET false",
-				"POWERSELECT SET 0"
-			]
-		},
-		{
 			"Name": "FMBT",
 			"Type": "SS_MBT",
 			"Position":
@@ -1282,6 +1214,74 @@
 			"Status": "NORMAL",
 			"InitialCommands": [
 				"BLOW SET false",
+				"EBLOW SET false",
+				"OPEN SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
+			"Name": "FTBT",
+			"Type": "SS_TBT",
+			"Position":
+			{
+				"X": 0,
+				"Y": 230,
+				"mX": "XCE",
+				"mY": "YE1"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 60
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EBLOW SET false",
+				"POWERSELECT SET 0",
+				"PUMPRATE SET 0.00"
+			]
+		},
+		{
+			"Name": "RTBT",
+			"Type": "SS_TBT",
+			"Position":
+			{
+				"X": 0,
+				"Y": 705,
+				"mX": "XCE",
+				"mY": "YE3"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 60
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"EBLOW SET false",
+				"POWERSELECT SET 0",
+				"PUMPRATE SET 0.00"
+			]
+		},
+		{
+			"Name": "RMBT",
+			"Type": "SS_MBT",
+			"Position":
+			{
+				"X": 0,
+				"Y": 857,
+				"mX": "XCE",
+				"mY": "YE3"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 60
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"BLOW SET false",
+				"EBLOW SET false",
 				"OPEN SET false",
 				"POWERSELECT SET 0"
 			]
@@ -1349,18 +1349,6 @@
 			"OffsetB": 10
 		},
 		{
-			"Name": "ftpl_feed",
-			"Status": "NORMAL",
-			"JunctionA": "FTBTPUMP",
-			"PortA": 0,
-			"JunctionB": "L1",
-			"PortB": 2,
-			"SideA": 1,
-			"OffsetA": 12,
-			"SideB": 3,
-			"OffsetB": 42
-		},
-		{
 			"Name": "rf_feed",
 			"Status": "NORMAL",
 			"JunctionA": "FJ",
@@ -1385,40 +1373,40 @@
 			"OffsetB": 10
 		},
 		{
-			"Name": "ftpr_feed",
-			"Status": "NORMAL",
-			"JunctionA": "FTBTPUMP",
-			"PortA": 1,
-			"JunctionB": "R1",
-			"PortB": 2,
-			"SideA": 3,
-			"OffsetA": 12,
-			"SideB": 1,
-			"OffsetB": 42
-		},
-		{
-			"Name": "ftbt_private",
-			"Status": "NORMAL",
-			"JunctionA": "BATTERY1",
-			"PortA": 0,
-			"JunctionB": "FTBTPUMP",
-			"PortB": 2,
-			"SideA": 0,
-			"OffsetA": 75,
-			"SideB": 2,
-			"OffsetB": 75
-		},
-		{
 			"Name": "l2",
 			"Status": "NORMAL",
 			"JunctionA": "L1",
-			"PortA": 3,
+			"PortA": 2,
 			"JunctionB": "L2",
 			"PortB": 0,
 			"SideA": 2,
 			"OffsetA": 10,
 			"SideB": 0,
 			"OffsetB": 10
+		},
+		{
+			"Name": "r2",
+			"Status": "NORMAL",
+			"JunctionA": "R1",
+			"PortA": 2,
+			"JunctionB": "R2",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 10,
+			"SideB": 0,
+			"OffsetB": 10
+		},
+		{
+			"Name": "cr_private",
+			"Status": "NORMAL",
+			"JunctionA": "BATTERY1",
+			"PortA": 0,
+			"JunctionB": "CONTROLROOM",
+			"PortB": 0,
+			"SideA": 2,
+			"OffsetA": 75,
+			"SideB": 0,
+			"OffsetB": 75
 		},
 		{
 			"Name": "b1l_feed",
@@ -1433,18 +1421,6 @@
 			"OffsetB": 12
 		},
 		{
-			"Name": "r2",
-			"Status": "NORMAL",
-			"JunctionA": "R1",
-			"PortA": 3,
-			"JunctionB": "R2",
-			"PortB": 0,
-			"SideA": 2,
-			"OffsetA": 10,
-			"SideB": 0,
-			"OffsetB": 10
-		},
-		{
 			"Name": "b1r_feed",
 			"Status": "NORMAL",
 			"JunctionA": "BATTERY1",
@@ -1455,18 +1431,6 @@
 			"OffsetA": 16,
 			"SideB": 1,
 			"OffsetB": 12
-		},
-		{
-			"Name": "cr_private",
-			"Status": "NORMAL",
-			"JunctionA": "BATTERY1",
-			"PortA": 3,
-			"JunctionB": "CONTROLROOM",
-			"PortB": 0,
-			"SideA": 2,
-			"OffsetA": 75,
-			"SideB": 0,
-			"OffsetB": 75
 		},
 		{
 			"Name": "l3",
@@ -1901,18 +1865,6 @@
 			"OffsetB": 12
 		},
 		{
-			"Name": "b2_rtbt",
-			"Status": "NORMAL",
-			"JunctionA": "RTBTPUMP",
-			"PortA": 0,
-			"JunctionB": "BATTERY2",
-			"PortB": 3,
-			"SideA": 0,
-			"OffsetA": 75,
-			"SideB": 2,
-			"OffsetB": 75
-		},
-		{
 			"Name": "l7",
 			"Status": "NORMAL",
 			"JunctionA": "L6",
@@ -1925,24 +1877,12 @@
 			"OffsetB": 10
 		},
 		{
-			"Name": "l7_rtbt",
-			"Status": "NORMAL",
-			"JunctionA": "RTBTPUMP",
-			"PortA": 1,
-			"JunctionB": "L7",
-			"PortB": 1,
-			"SideA": 1,
-			"OffsetA": 12,
-			"SideB": 3,
-			"OffsetB": 10
-		},
-		{
 			"Name": "l7_rov",
 			"Status": "NORMAL",
 			"JunctionA": "ROV",
 			"PortA": 0,
 			"JunctionB": "L7",
-			"PortB": 2,
+			"PortB": 1,
 			"SideA": 1,
 			"OffsetA": 12,
 			"SideB": 3,
@@ -1961,24 +1901,12 @@
 			"OffsetB": 10
 		},
 		{
-			"Name": "r7_rtbt",
-			"Status": "NORMAL",
-			"JunctionA": "RTBTPUMP",
-			"PortA": 2,
-			"JunctionB": "R7",
-			"PortB": 1,
-			"SideA": 3,
-			"OffsetA": 12,
-			"SideB": 1,
-			"OffsetB": 10
-		},
-		{
 			"Name": "r7_rov",
 			"Status": "NORMAL",
 			"JunctionA": "ROV",
 			"PortA": 1,
 			"JunctionB": "R7",
-			"PortB": 2,
+			"PortB": 1,
 			"SideA": 3,
 			"OffsetA": 12,
 			"SideB": 1,
@@ -1988,7 +1916,7 @@
 			"Name": "rr",
 			"Status": "NORMAL",
 			"JunctionA": "R7",
-			"PortA": 3,
+			"PortA": 2,
 			"JunctionB": "RJ",
 			"PortB": 0,
 			"SideA": 2,
@@ -2000,7 +1928,7 @@
 			"Name": "lr",
 			"Status": "NORMAL",
 			"JunctionA": "L7",
-			"PortA": 3,
+			"PortA": 2,
 			"JunctionB": "RJ",
 			"PortB": 1,
 			"SideA": 2,
@@ -2153,11 +2081,11 @@
 			"OffsetB": 12
 		},
 		{
-			"Name": "rmbt_feed",
+			"Name": "fmbt_feed",
 			"Status": "NORMAL",
-			"JunctionA": "RMBT",
+			"JunctionA": "FMBT",
 			"PortA": 0,
-			"JunctionB": "E6",
+			"JunctionB": "E3",
 			"PortB": 1,
 			"SideA": 3,
 			"OffsetA": 30,
@@ -2165,11 +2093,35 @@
 			"OffsetB": 10
 		},
 		{
-			"Name": "fmbt_feed",
+			"Name": "ftbt_feed",
 			"Status": "NORMAL",
-			"JunctionA": "FMBT",
+			"JunctionA": "FTBT",
 			"PortA": 0,
-			"JunctionB": "E3",
+			"JunctionB": "E1",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 30,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "ftbt_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RTBT",
+			"PortA": 0,
+			"JunctionB": "E4",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 30,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "rmbt_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RMBT",
+			"PortA": 0,
+			"JunctionB": "E6",
 			"PortB": 1,
 			"SideA": 3,
 			"OffsetA": 30,

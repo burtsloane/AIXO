@@ -23,6 +23,7 @@
 #include "SS_MainMotor.h"
 #include "SS_RTBTPump.h"
 #include "SS_ROVCharging.h"
+#include "SS_TBT.h"
 #include "SS_MBT.h"
 #include "SS_RMBTVent.h"
 #include "SS_Rudder.h"
@@ -142,8 +143,9 @@ void UPowerGridLoader::RegisterJunctionTypes()
     JunctionFactoryRegistry.Add("SS_RTBTPump", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_RTBTPump(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_ROVCharging", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_ROVCharging(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_RMBTVent", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_RMBTVent(Name, State, X, Y, W, H); });
-    JunctionFactoryRegistry.Add("SS_MBT", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_MBT(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_Rudder", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_Rudder(Name, State, X, Y, W, H); });
+    JunctionFactoryRegistry.Add("SS_MBT", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_MBT(Name, State, X, Y, W, H); });
+    JunctionFactoryRegistry.Add("SS_TBT", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_TBT(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_Elevator", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_Elevator(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_GPS", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_GPS(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_Camera", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_Camera(Name, State, X, Y, W, H); });
