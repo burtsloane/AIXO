@@ -14,8 +14,9 @@ private:
 
 public:
     PWRJ_MultiFeederJunction(const FString& name, float InX, float InY, float InW=150, float InH=24)
-        : ICH_PowerJunction(name, InX, InY, InW, InH, true)  // Always a power source
+        : ICH_PowerJunction(name, InX, InY, InW, InH)
     {
+    	bIsPowerSource = true;  // Always a power source
     }
 	virtual FString GetTypeString() const override { return TEXT("PWRJ_MultiFeederJunction"); }
 

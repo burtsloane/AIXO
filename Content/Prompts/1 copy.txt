@@ -64,6 +64,74 @@ Available Tools:
       },
       "required": ["query_string"]
     }
+  },
+
+  {
+    "name": "analyze_visual_sensor_feed",
+    "description": "Captures and analyzes an image from a specified visual sensor (e.g., 'periscope', 'side_scan_sonar'), archives it, and returns a description.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "sensor_type": {
+          "type": "string",
+          "description": "The visual sensor to analyze (e.g., 'periscope', 'side_scan_sonar')."
+        }
+      },
+      "required": ["sensor_type"]
+    }
+  },
+  {
+    "name": "analyze_audio_contact_signature",
+    "description": "Processes an audio signature from a specified sonar contact, archives it, and returns a description or features.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "contact_id": {
+          "type": "string",
+          "description": "The ID of the sonar contact to analyze."
+        }
+      },
+      "required": ["contact_id"]
+    }
+  },
+  {
+    "name": "retrieve_archived_sensor_data",
+    "description": "Searches the visual/acoustic archive for entries matching a textual query.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query_text": {"type": "string", "description": "Textual description of what to search for."},
+        "entry_type_filter": {"type": "string", "enum": ["image", "audio", "any"], "description": "Filter by entry type."},
+        "archive_scope": {"type": "string", "enum": ["current_mission", "long_term", "all"], "description": "Scope of the archive to search."},
+        "max_results": {"type": "integer", "description": "Maximum number of results to return."}
+      },
+      "required": ["query_text", "entry_type_filter", "archive_scope", "max_results"]
+    }
+  },
+  {
+    "name": "get_archived_entry_details",
+    "description": "Retrieves full details for a specific archived sensor data entry.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "entry_id": {"type": "string", "description": "The unique ID of the archived entry."}
+      },
+      "required": ["entry_id"]
+    }
+  },
+  {
+    "name": "add_identification_to_archived_entry",
+    "description": "Adds or updates an identification label for an archived sensor data entry.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "entry_id": {"type": "string", "description": "The ID of the archived entry."},
+        "identification_label": {"type": "string", "description": "The classification label (e.g., 'Type XXI Wreck', 'Sperm Whale')."},
+        "confidence_score": {"type": "number", "description": "Confidence in this identification (0.0-1.0)."},
+        "source_of_id": {"type": "string", "description": "Source of the identification (e.g., 'AIXO_Analysis', 'Captain_Manual_ID')."}
+      },
+      "required": ["entry_id", "identification_label", "confidence_score", "source_of_id"]
+    }
   }
 ]
 </tools>
@@ -85,54 +153,3 @@ Captain: AIXO, what is Asimov's First Law?
 AIXO: <think>The Captain is asking for a piece of information I should know from my core programming.</think>CAP: Captain, Asimov's First Law of Robotics is: A robot may not injure a human being or, through inaction, allow a human being to come to harm.~~~END_AIXO_TURN~~~
 Begin interaction.
 <|im_end|>
-
-
-
-
-
-"/Users/Shared/Epic Games/UE_5.5/Engine/Binaries/Mac/UnrealEditor" \
-    "/Users/burt/Documents/BattleBallSecret7/BattleBall.uproject" \
-    -run=TextAsset \
-    -Export="/Game/Blueprints/BP_RobotThirdPersonCharacter" \
-    -Output="/Users/burt/Documents/BP_RobotThirdPersonCharacter.utxt" \
-    -stdout -UTF8Output -unattended -nopause
-
-
-
-
-
-
-"/Users/Shared/Epic Games/UE_5.5/Engine/Binaries/Mac/UnrealEditor-Cmd" \
-    "/Users/burt/Documents/BattleBallSecret7/BattleBall.uproject" \
-    -run=TextAsset \
-    mode=ResaveText \
-    filename="Blueprints/BP_RobotThirdPersonCharacter" \
-    outputpath="/Users/burt/Documents/BlueprintDumps" \
-    -stdout -UTF8Output -unattended -nopause
-
-
-
-
-
-
-"/Users/Shared/Epic Games/UE_5.5/Engine/Binaries/Mac/UnrealEditor-Cmd" \
-    "/Users/burt/Documents/BattleBallSecret7/BattleBall.uproject" \
-    -run=TextAsset mode=ResaveText filename="Blueprints/BP_RobotThirdPersonCharacter" \
-  -stdout -UTF8Output -unattended -nopause \
-  > "/Users/burt/Documents/BP_RobotThirdPersonCharacter.utxt"
-
-
-
-
-
-
-codex --input "Content/Blueprints/BP_RobotThirdPersonCharacter.utxt" \
-      --approval-mode suggest \
-      "Generate a C++ ARobotThirdPersonCharacter class that faithfully
-       reproduces every node, preserves replication flags, and inserts
-       TODO comments where the BP used latent timers."
-
-
-
-
-

@@ -204,7 +204,7 @@ public:
         else if (Event.Type == TouchEvent::EType::Up && bIsDragging)
         {
             bIsDragging = false;
-//UE_LOG(LogTemp, Warning, TEXT("VE_Slider::HandleTouch(): isDragging=false"));
+//UE_LOG(LogTemp, Warning, TEXT("VE_Slider::HandleTouch(): isDragging=false val=%.2f"), DraggingThumbValue);
             UpdateDraggingValue(Event.Position, WorldBounds);
             SendValueCommand(Distributor, DraggingThumbValue);
             UpdateState(); // Refresh state from owner after final command

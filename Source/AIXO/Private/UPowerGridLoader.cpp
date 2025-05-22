@@ -12,7 +12,7 @@
 #include "SS_Battery.h" // Includes SS_Battery1, SS_Battery2
 #include "SS_ControlRoom.h"
 #include "SS_Airlock.h"
-#include "SS_CrossTBTPump.h"
+#include "SS_XTBTPump.h"
 #include "SS_CO2Scrubber.h"
 #include "SS_Degaussing.h"
 #include "SS_AirCompressor.h"
@@ -23,6 +23,7 @@
 #include "SS_MainMotor.h"
 #include "SS_RTBTPump.h"
 #include "SS_ROVCharging.h"
+#include "SS_MBT.h"
 #include "SS_RMBTVent.h"
 #include "SS_Rudder.h"
 #include "SS_Elevator.h"
@@ -129,7 +130,7 @@ void UPowerGridLoader::RegisterJunctionTypes()
     // ... Add ALL other SS_* types here ...
     JunctionFactoryRegistry.Add("SS_ControlRoom", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_ControlRoom(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_Airlock", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_Airlock(Name, State, X, Y, W, H); });
-    JunctionFactoryRegistry.Add("SS_CrossTBTPump", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_CrossTBTPump(Name, State, X, Y, W, H); });
+    JunctionFactoryRegistry.Add("SS_XTBTPump", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_XTBTPump(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_CO2Scrubber", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_CO2Scrubber(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_Degaussing", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_Degaussing(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_AirCompressor", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_AirCompressor(Name, State, X, Y, W, H); });
@@ -141,6 +142,7 @@ void UPowerGridLoader::RegisterJunctionTypes()
     JunctionFactoryRegistry.Add("SS_RTBTPump", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_RTBTPump(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_ROVCharging", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_ROVCharging(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_RMBTVent", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_RMBTVent(Name, State, X, Y, W, H); });
+    JunctionFactoryRegistry.Add("SS_MBT", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_MBT(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_Rudder", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_Rudder(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_Elevator", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_Elevator(Name, State, X, Y, W, H); });
     JunctionFactoryRegistry.Add("SS_GPS", [](const FString& Name, ASubmarineState* State, float X, float Y, float W, float H) -> ICH_PowerJunction* { return new SS_GPS(Name, State, X, Y, W, H); });

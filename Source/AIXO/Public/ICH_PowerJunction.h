@@ -54,15 +54,20 @@ protected:		// determined by power propagator
     bool bIsSelected;
 
     EPowerJunctionStatus Status = EPowerJunctionStatus::NORMAL; // Junction status
+	FBox2D ActualExtent;	// can be bigger if VE_* is outside the basic box
 
 public:
-    ICH_PowerJunction(const FString& name, float InX, float InY, float InW = 150.f, float InH = 24.f, bool bSource = false, float InDefaultPower = 0.0f, float InDefaultNoise = 0.0f)
+    ICH_PowerJunction(const FString& name, float InX, float InY, float InW = 150.f, float InH = 24.f)
         : X(InX), Y(InY), W(InW), H(InH),
-          bIsPowerSource(bSource),
-          DefaultPowerUsage(InDefaultPower), DefaultNoiseLevel(InDefaultNoise)
+          bIsPowerSource(false),
+          DefaultPowerUsage(0.0f), DefaultNoiseLevel(0.0f)
     { 
         SystemName = name; 
         CurrentVisualElement = nullptr;
+        ActualExtent.Min.X = InX - B;
+        ActualExtent.Min.Y = InY - B;
+        ActualExtent.Max.X = InX + InW + B;
+        ActualExtent.Max.Y = InY + InH + B;
     }
 
     virtual ~ICH_PowerJunction()
@@ -611,10 +616,39 @@ public:
     virtual bool IsPointNear(const FVector2D& Point) const
     {
         // Check if point is within junction bounds plus a small margin
-        const float Margin = 10.0f; // pixels
-        return Point.X >= X - Margin && Point.X <= X + W + Margin &&
-               Point.Y >= Y - Margin && Point.Y <= Y + H + Margin;
+//        const float Margin = 10.0f; // pixels
+//        return Point.X >= X - Margin && Point.X <= X + W + Margin &&
+//               Point.Y >= Y - Margin && Point.Y <= Y + H + Margin;
+		if (ActualExtent.Min.X > Point.X) return false;
+		if (ActualExtent.Min.Y > Point.Y) return false;
+		if (ActualExtent.Max.X < Point.X) return false;
+		if (ActualExtent.Max.Y < Point.Y) return false;
+		return true;
     }
+
+    void CalculateExtentsVisualElements() {
+		for (IVisualElement* Element : VisualElements) {
+			FBox2D r = Element->GetRelativeBounds();
+			float x = X + r.Min.X;
+			float y = Y + r.Min.Y;
+			float x1 = X + r.Max.X;
+			float y1 = Y + r.Max.Y;
+			if (ActualExtent.Min.X > x) ActualExtent.Min.X = x;
+			if (ActualExtent.Min.Y > y) ActualExtent.Min.Y = y;
+			if (ActualExtent.Max.X < x1) ActualExtent.Max.X = x1;
+			if (ActualExtent.Max.Y < y1) ActualExtent.Max.Y = y1;
+		}
+	}
+
+	void RenderHighlights(RenderingContext& Context) const {
+		Context.DrawRectangle(ActualExtent, FLinearColor::Gray, true);
+		FBox2D r;
+		r.Min.X = X - P;
+		r.Max.X = X+W + P;
+		r.Min.Y = Y - P;
+		r.Max.Y = Y+H + P;
+		Context.DrawRectangle(r, FLinearColor::Yellow, true);
+	}
 
     friend class PWR_PowerSegment;
     friend class PWR_PowerPropagation;

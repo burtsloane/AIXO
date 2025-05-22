@@ -14,6 +14,16 @@ public:
 	}
 	virtual FString GetTypeString() const override { return TEXT("SS_RMBTVent"); }
 
+    virtual float GetLevel()
+    {
+    	return SubState->RearMBTLevel;
+    }
+
+    virtual void SetLevel(float val)
+    {
+		SubState->RearMBTLevel = val;
+    }
+
 	bool bIsBlowing = false;
 
     virtual ECommandResult HandleCommand(const FString& Aspect, const FString& Command, const FString& Value) override
@@ -69,9 +79,9 @@ public:
 
     virtual bool TickFlask(float ScaledDeltaTime)
     {
-    	SubState->Flask2Level -= ScaledDeltaTime;
-    	if (SubState->Flask2Level < 0) {
-    		SubState->Flask2Level = 0;
+		SetLevel(GetLevel() - ScaledDeltaTime);
+    	if (GetLevel() < 0) {
+    		SetLevel(0.0f);
     		return true;
     	}
     	return false;
@@ -101,46 +111,58 @@ public:
         }
         if (OpenClosePart->IsOpen() || bIsBlowing)
         {
-            float NewLevel = SubState->RearMBTLevel + CurrentVentRate * DeltaTime;
+            float NewLevel = GetLevel() + CurrentVentRate * DeltaTime;
             if (NewLevel <= 0.0f)
             {
                 HandleCommand("BLOW", "SET", "false");
                 bIsBlowing = false;
                 AddToNotificationQueue(FString::Printf(TEXT("%s tank %s"), *GetSystemName(), TEXT("empty")));
-                SubState->RearMBTLevel = 0.0f;
+                SetLevel(0.0f);
 				UpdateChange();
             }
             else if (NewLevel >= 1.0f)
             {
                 HandleCommand("OPEN", "SET", "false");
                 AddToNotificationQueue(FString::Printf(TEXT("%s tank %s"), *GetSystemName(), TEXT("full")));
-                SubState->RearMBTLevel = 1.0f;
+                SetLevel(1.0f);
 				UpdateChange();
             }
             else
             {
-                SubState->RearMBTLevel = NewLevel;
+                SetLevel(NewLevel);
             }
         }
     }
 
-	virtual void RenderUnderlay(RenderingContext& Context) override
+	virtual void Render(RenderingContext& Context) override
 	{
-        FVector2D Position;
-        Position.X = X + W/2;
-        Position.Y = Y + H/2;
-		FVector2D Position2 = Position;
-		FVector2D Position3 = Position;
+		PWRJ_MultiSelectJunction::Render(Context);
+return;		// old
+		//
 		int32 dx = 150-75-16-3-13+1 + 16;
-		Position2.X = X-dx;        	Position2.Y -= 30;
-		Position3.X = X-dx;        	Position3.Y += 30;
-		Context.DrawTriangle(Position, Position2, Position3, FLinearColor(0.85f, 0.85f, 1.0f));
-		
-		RenderUnderline(Context);
+		FBox2D r;
+		r.Min.X = X-dx - 120;
+		r.Min.Y = Y + H/2 - 30;
+		r.Max.X = X-dx;
+		r.Max.Y = Y + H/2 + 30;
+		Context.DrawRectangle(r, FLinearColor::White, true);
+		FBox2D r2 = r;
+		r2.Min.Y += 60-60*GetLevel();
+		Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
+		Context.DrawRectangle(r, FLinearColor::Black, false);
+		//
+		FVector2D Position = r.Min;
+		Position.X += 1;
+		Position.Y += 1;
+		Context.DrawText(Position, "RMBT", FLinearColor::Black);
+		Position.X += 75;
+		if (GetLevel() == 1.0f) Position.X -= 7;
+		Context.DrawText(Position, FString::Printf(TEXT("%d%%"), (int)(100*GetLevel())), FLinearColor::Black);
 	}
 
 	virtual void RenderUnderline(RenderingContext& Context)
 	{
+return;		// old
 		FBox2D r;
 		int32 dx = 150-75-16-3-13+1 + 16;
 		r.Min.X = X-dx - 120;
@@ -166,29 +188,20 @@ public:
 		}
 	}
 
-	virtual void Render(RenderingContext& Context) override
+	virtual void RenderUnderlay(RenderingContext& Context) override
 	{
-		PWRJ_MultiSelectJunction::Render(Context);
-		//
+return;		// old
+        FVector2D Position;
+        Position.X = X + W/2;
+        Position.Y = Y + H/2;
+		FVector2D Position2 = Position;
+		FVector2D Position3 = Position;
 		int32 dx = 150-75-16-3-13+1 + 16;
-		FBox2D r;
-		r.Min.X = X-dx - 120;
-		r.Min.Y = Y + H/2 - 30;
-		r.Max.X = X-dx;
-		r.Max.Y = Y + H/2 + 30;
-		Context.DrawRectangle(r, FLinearColor::White, true);
-		FBox2D r2 = r;
-		r2.Min.Y += 60-60*SubState->RearMBTLevel;
-		Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
-		Context.DrawRectangle(r, FLinearColor::Black, false);
-		//
-		FVector2D Position = r.Min;
-		Position.X += 1;
-		Position.Y += 1;
-		Context.DrawText(Position, "RMBT", FLinearColor::Black);
-		Position.X += 75;
-		if (SubState->RearMBTLevel == 1.0f) Position.X -= 7;
-		Context.DrawText(Position, FString::Printf(TEXT("%d%%"), (int)(100*SubState->RearMBTLevel)), FLinearColor::Black);
+		Position2.X = X-dx;        	Position2.Y -= 30;
+		Position3.X = X-dx;        	Position3.Y += 30;
+		Context.DrawTriangle(Position, Position2, Position3, FLinearColor(0.85f, 0.85f, 1.0f));
+		
+		RenderUnderline(Context);
 	}
 
 	void RenderLabels(RenderingContext& Context)

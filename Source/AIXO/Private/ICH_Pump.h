@@ -64,7 +64,5 @@ public:
     {
         return Aspect == "PUMPRATE" && Command == "SET";
     }
-    
-    
 };
 

@@ -561,17 +561,64 @@ if (0)    if (CurrentInputTypeHintFStr.Equals(TEXT("user"), ESearchCase::IgnoreC
 		int i = lim - 1200;
 		if (i < CurrentFixedTokens) i = CurrentFixedTokens;
 		for	(; i<lim; i++) {
-			if (i == (StablePrefixLength-ConversationHistoryTokens.size())) cs += "\n-----Start of convo-----\n";
-//			if (i == StablePrefixLength) cs += "\n-----End of convo-----\n";
+			char num[250];
+			snprintf(num, 250, " (%d)", i);
+			if (i == (StablePrefixLength-ConversationHistoryTokens.size())) {
+				cs += "\n-----Start of convo-----";
+				cs += num;
+				cs += "\n";
+			}
 			const char* piece = llama_vocab_get_text(vocab, MirroredKvCacheTokens[i]);
+			if (piece && piece[0] == '\n') cs += num;
 			if (piece) cs += piece;
-			if ((i+1) == StablePrefixLength) cs += "\n-----End of convo-----\n";
-			if ((i+1) == kv_cache_token_cursor) cs += "\n-----Token cursor-----\n";
+			//
+			snprintf(num, 250, " (%d)", i+1);
+			if ((i+1) == StablePrefixLength) {
+				cs += "\n-----End of convo-----";
+				cs += num;
+				cs += "\n";
+			}
+			if ((i+1) == kv_cache_token_cursor) {
+				cs += "\n-----Token cursor-----";
+				cs += num;
+				cs += "\n";
+			}
 		}
 		std::string ss = CleanString(cs);
 		//FString str = UTF8_TO_TCHAR(CleanString(CurrentReplyStr).c_str());
 		FString fs = UTF8_TO_TCHAR(ss.c_str());
-		UE_LOG(LogTemp, Log, TEXT("LlamaLogContext %s: CONTEXT DUMP STARTS ---------------------------------------\n\n%s\n\nCONTEXT DUMP ENDS ---------------------------------------\n"), *Label, *fs);
+		UE_LOG(LogTemp, Log, TEXT("LlamaLogContext %s: \n--------------------------------------- CONTEXT DUMP STARTS ---------------------------------------\n\n%s\n\n--------------------------------------- CONTEXT DUMP ENDS ---------------------------------------\n"), *Label, *fs);
+		
+		cs = "";
+		for (llama_token t: ConversationHistoryTokens) {
+			const char* piece = llama_vocab_get_text(vocab, t);
+			if (piece) cs += piece;
+		}
+		ss = CleanString(cs);
+		//FString str = UTF8_TO_TCHAR(CleanString(CurrentReplyStr).c_str());
+		fs = UTF8_TO_TCHAR(ss.c_str());
+		UE_LOG(LogTemp, Log, TEXT("                 : \n--------------------------------------- CONVERSATION HISTORY STARTS ---------------------------------------\n\n%s\n\n--------------------------------------- CONVERSATION HISTORY ENDS ---------------------------------------\n"), *fs);
+
+		cs = "";
+		int idx=0;
+        for (const auto& turn : StructuredConversationHistory) {
+        	char num[250];
+        	snprintf(num, 250, "%d", idx);
+        	cs += num;
+        	cs += ":";
+        	cs += TCHAR_TO_UTF8(*turn.Role);
+        	cs += "-'";
+			for (llama_token t: turn.Tokens) {
+				const char* piece = llama_vocab_get_text(vocab, t);
+				if (piece) cs += piece;
+			}
+			cs += "'\n";
+        	idx++;
+        }
+		ss = CleanString(cs);
+		//FString str = UTF8_TO_TCHAR(CleanString(CurrentReplyStr).c_str());
+		fs = UTF8_TO_TCHAR(ss.c_str());
+		UE_LOG(LogTemp, Log, TEXT("                 : \n--------------------------------------- STRUCTURED CONVERSATION HISTORY STARTS ---------------------------------------\n\n%s\n\n--------------------------------------- STRUCTURED CONVERSATION HISTORY ENDS ---------------------------------------\n"), *fs);
 	}
 
 	
@@ -830,7 +877,7 @@ if (eos_reached) {
                 AssistantMessageTokensForStorageInHistory.insert(AssistantMessageTokensForStorageInHistory.end(), cd_std.begin(), cd_std.end());
             }
 
-//        	LlamaLogContext("DecodeTokensAndSample 2");
+//LlamaLogContext("DecodeTokensAndSample 2");
 
             // If AssistantMessageTokensForStorageInHistory is empty here, it means the AI generated
             // something that wasn't a recognized tool call or CAP: dialogue (e.g., only a <think> block and then stopped).
@@ -855,6 +902,7 @@ if (eos_reached) {
 					}
 				}
 				StablePrefixLength += ConversationHistoryTokens.size(); // ConversationHistoryTokens now includes the latest input with its role tags
+//LlamaLogContext("DecodeTokensAndSample 3");
 
 				if (kv_cache_token_cursor > StablePrefixLength) {
 					UE_LOG(LogTemp, Warning, TEXT("LlamaThread: KV cursor (%d) was beyond current fixed+convo length (%d). Adjusting."),
@@ -862,9 +910,13 @@ if (eos_reached) {
 					InvalidateKVCacheFromPosition(StablePrefixLength); // This sets kv_cache_token_cursor = StablePrefixLength
 				}
                 AppendTurnToStructuredHistory(TEXT("assistant"), AssistantMessageTokensForStorageInHistory);
+std::string assistant_prefix_str = "<|im_start|>assistant\n";
+std::vector<llama_token> assistant_prefix_tokens = my_llama_tokenize(model, assistant_prefix_str, false, true);
+MirroredKvCacheTokens.insert(MirroredKvCacheTokens.end(), assistant_prefix_tokens.begin(), assistant_prefix_tokens.end());
+kv_cache_token_cursor += assistant_prefix_tokens.size();
                 MirroredKvCacheTokens.insert(MirroredKvCacheTokens.end(), AssistantMessageTokensForStorageInHistory.begin(), AssistantMessageTokensForStorageInHistory.end());
                 kv_cache_token_cursor += AssistantMessageTokensForStorageInHistory.size();
-//LlamaLogContext("DecodeTokensAndSample 3");
+//LlamaLogContext("DecodeTokensAndSample 3.1");
                 // Note: AppendTurnToStructuredHistory should internally rebuild the flat ConversationHistoryTokens
                 // and PruneConversationHistory (if called from there) should handle KV cache invalidation
                 // if the total length changes significantly or pruning occurs.
@@ -894,7 +946,7 @@ if (eos_reached) {
             // This is CRITICAL for the LLM to understand the conversation flow.
             // Example for Qwen (simplified):
             std::string role_prefix = "<|im_start|>" + std::string(TCHAR_TO_UTF8(*turn.Role)) + "\n";
-            std::string role_suffix = "\n";		// ??? had to remove <|im_end|> or it would wind up twice in convo
+            std::string role_suffix = "<|im_end|>\n";		// ??? had to remove <|im_end|> or it would wind up twice in convo
 
             std::vector<llama_token> role_prefix_t = my_llama_tokenize(model, role_prefix, false, true);
             std::vector<llama_token> role_suffix_t = my_llama_tokenize(model, role_suffix, false, true);
@@ -1374,7 +1426,7 @@ if (eos_reached) {
 		CurrentHighFrequencyStateTokens = NewHFS_Tokens; // Store for AssembleFullPromptForTurn
 
 		std::string input_content_std = TCHAR_TO_UTF8(*InputTextFStr); // This is the *content* of the input
-        input_content_std += "<|im_end|>\n";		// ??? this token was just missing
+//        input_content_std += "<|im_end|>\n";		// ??? this token was just missing
 		std::vector<llama_token> NewInput_Content_Tokens = my_llama_tokenize(model, input_content_std, false, 
 			InputTypeHintFStr.Equals(TEXT("tool"), ESearchCase::IgnoreCase) || InputTextFStr.Contains(TEXT("<")) // Allow special if tool or contains tags
 		);
@@ -1508,7 +1560,27 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
 			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid()) {
 				FString ToolName;
 				if (JsonObject->TryGetStringField(TEXT("name"), ToolName)) {
-					if (ToolName.Equals(TEXT("query_submarine_system"))) {
+					if (ToolName.Equals(TEXT("get_system_info"))) {
+						FString QueryString;
+						const TSharedPtr<FJsonObject>* ArgsObject;
+						if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
+							(*ArgsObject)->TryGetStringField(TEXT("system_name"), QueryString)) {
+							HandleToolCall_GetSystemInfo(QueryString);
+						} else {
+							SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'system_name' in arguments.\"}"));
+						}
+					}
+					else if (ToolName.Equals(TEXT("execute_submarine_command"))) {
+						FString QueryString;
+						const TSharedPtr<FJsonObject>* ArgsObject;
+						if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
+							(*ArgsObject)->TryGetStringField(TEXT("command_string"), QueryString)) {
+							HandleToolCall_CommandSubmarineSystem(QueryString);
+						} else {
+							SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'command_string' in arguments.\"}"));
+						}
+					}
+					else if (ToolName.Equals(TEXT("query_submarine_system_aspect"))) {
 						FString QueryString;
 						const TSharedPtr<FJsonObject>* ArgsObject;
 						if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
@@ -1518,7 +1590,6 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
 							SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'query_string' in arguments.\"}"));
 						}
 					}
-					// else if (ToolName.Equals(TEXT("execute_submarine_command"))) { ... }
 					else {
 						SendToolResponseToLlama(ToolName, FString::Printf(TEXT("{\"error\": \"Unknown tool name: %s\"}"), *ToolName));
 					}
@@ -2118,8 +2189,35 @@ FString ULlamaComponent::MakeCommandHandlerString(ICommandHandler *ich) {
 
 
 
-
 // This function is called by the lambda queued from Internal::Llama::toolCallCb
+void ULlamaComponent::HandleToolCall_GetSystemInfo(const FString& SystemName)
+{
+    if (!HarnessActor) {
+        SendToolResponseToLlama(TEXT("get_system_info"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("ToolCall: GetSystemInfo - System: '%s'"), *SystemName);
+
+    ICommandHandler* FoundHandler = nullptr;
+    for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
+        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
+            FoundHandler = Handler;
+            break;
+        }
+    }
+
+    if (!FoundHandler) {
+        SendToolResponseToLlama(TEXT("get_system_info"), 
+            FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
+        return;
+    }
+
+	FString str = MakeCommandHandlerString(FoundHandler);
+
+    SendToolResponseToLlama(TEXT("get_system_info"), str);
+}
+
 void ULlamaComponent::HandleToolCall_QuerySubmarineSystem(const FString& QueryString)
 {
     if (!HarnessActor) {
@@ -2127,24 +2225,17 @@ void ULlamaComponent::HandleToolCall_QuerySubmarineSystem(const FString& QuerySt
         return;
     }
 
-    // Parse the QueryString: "SYSTEM_NAME QUERY_TYPE"
-    // Example: "CAMERA CAPABILITIES", "ELECTROLYZER STATUS_DETAILS"
     FString SystemName;
-    FString QueryType;
+    FString Aspect;
     FString TempQueryString = QueryString.TrimStartAndEnd();
 
-    if (!TempQueryString.Split(TEXT(" "), &SystemName, &QueryType, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-        // If only one word, assume it's the system name and default to STATUS_DETAILS or a general info dump
-        SystemName = TempQueryString;
-        QueryType = TEXT("STATUS_DETAILS"); // Default query type
-        if (SystemName.IsEmpty()) {
-             SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Invalid query_string format. Expected SYSTEM_NAME QUERY_TYPE or just SYSTEM_NAME.\"}"));
-            return;
-        }
+    if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+		SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
+		return;
     }
-    QueryType = QueryType.TrimStartAndEnd().ToUpper(); // Normalize query type
+    Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
 
-    UE_LOG(LogTemp, Log, TEXT("ToolCall: QuerySubmarineSystem - System: '%s', Type: '%s'"), *SystemName, *QueryType);
+    UE_LOG(LogTemp, Log, TEXT("ToolCall: QuerySubmarineSystem - System: '%s', Aspect: '%s'"), *SystemName, *Aspect);
 
     ICommandHandler* FoundHandler = nullptr;
     for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
@@ -2160,16 +2251,77 @@ void ULlamaComponent::HandleToolCall_QuerySubmarineSystem(const FString& QuerySt
         return;
     }
 
-//- 'commands' is a list of: "ASPECT VERB <VALUE>" separated by '\\n'. To execute a command, use "SYSTEM_NAME.ASPECT VERB <VALUE>".
-//- 'queries' is a list of: "ASPECT" separated by ' '. To execute a query, use "SYSTEM_NAME.ASPECT".
-//- 'connections' is a list of: "<segment_name>:<other_junction_name>.<other_junction_pin_#>".
-//- 'power_path' use: "<source_junction>:<segment1>:<junction2>...:<this_system_name>".
-//- 'state' is a list of: "ASPECT VERB <ACTUAL VALUE>" representing the state of the system.
-//- 'port_state' is a list of: "STATUS:<status> POWER:<power>" for each port. <status> is NORMAL, SHORTED or OPENED. <power> is units moving through the port. Prefix with "#" if the port is disabled.
-
-	FString str = MakeCommandHandlerString(FoundHandler);
+	FString str = FoundHandler->QueryState(Aspect);
 
     SendToolResponseToLlama(TEXT("query_submarine_system"), str);
+}
+
+void ULlamaComponent::HandleToolCall_CommandSubmarineSystem(const FString& QueryString)
+{
+    if (!HarnessActor) {
+        SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
+        return;
+    }
+
+	TArray<FString> Cmds;
+	QueryString.ParseIntoArray(Cmds, TEXT("\n"), true);
+
+	for (FString TempQueryString: Cmds) {
+		FString SystemName;
+		FString Aspect;
+		FString Verb;
+		FString Value;
+
+		if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
+			return;
+		}
+		Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
+		// if SystemName has a space, it's an error
+		if (TempQueryString.Split(TEXT(" "), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT' with no spaces.\"}"));
+			return;
+		}
+		// split Aspect into Aspect Verb[ Value]
+		if (!TempQueryString.Split(TEXT(" "), &Aspect, &Verb, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT VERB'.\"}"));
+			return;
+		}
+		TempQueryString.Split(TEXT(" "), &Verb, &Value, ESearchCase::IgnoreCase, ESearchDir::FromStart);
+
+		ICommandHandler* FoundHandler = nullptr;
+		for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
+			if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
+				FoundHandler = Handler;
+				break;
+			}
+		}
+
+		if (!FoundHandler) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
+			return;
+		}
+
+		ECommandResult r = FoundHandler->HandleCommand(Aspect, Verb, Value);
+		if (r == ECommandResult::Blocked) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"Command blocked.\"}")));
+			return;
+		}
+		if (r == ECommandResult::NotHandled) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"Command not handled.\"}")));
+			return;
+		}
+		if (r == ECommandResult::HandledWithError) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"Command handled with error.\"}")));
+			return;
+		}
+	}
+	SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+		FString::Printf(TEXT("{\"error\": \"Command completed.\"}")));
 }
 
 void ULlamaComponent::SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent)

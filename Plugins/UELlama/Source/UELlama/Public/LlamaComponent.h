@@ -207,6 +207,8 @@ public:
 
 	void ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor);
 	void ForwardContextUpdateToGameThread(const FContextVisPayload& Payload);
+	void HandleToolCall_GetSystemInfo(const FString& QueryString);
+	void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
 	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
 	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
 	std::string MakeHFSString();

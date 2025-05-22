@@ -155,6 +155,7 @@ public:
 	const int32 DX = 150 + 16;
 	virtual void RenderUnderlay(RenderingContext& Context) override
 	{
+return;		// old
         FVector2D Position;
         Position.X = X + H/2;
         Position.Y = Y + H/2;
@@ -168,6 +169,7 @@ public:
 	virtual void Render(RenderingContext& Context) override
 	{
 		PWRJ_MultiSelectJunction::Render(Context);
+return;		// old
 		//
         FVector2D Position;
 		FBox2D r;

@@ -3,12 +3,12 @@
 
 #include "ICommandHandler.h"
 #include "SubmarineState.h"
-#include "SS_CrossTBTPump.h"
+#include "SS_XTBTPump.h"
 #include <cmath>
 
 class PID_TrimPitch : public ICommandHandler {
 public:
-    PID_TrimPitch(const FString &name, ASubmarineState& InState, SS_CrossTBTPump* InPump)
+    PID_TrimPitch(const FString &name, ASubmarineState& InState, SS_XTBTPump* InPump)
         : SubState(InState), Pump(InPump), TargetPitch(0.0f), bEnabled(false),
           Kp(0.5f), Ki(0.0f), Kd(0.2f), LastError(0.0f), Integral(0.0f),
           StableTime(0.0f), LastPitch(0.0f) { SystemName = name; }
@@ -93,7 +93,7 @@ public:
 
 private:
     ASubmarineState& SubState;
-    SS_CrossTBTPump* Pump;
+    SS_XTBTPump* Pump;
     float TargetPitch;
     bool bEnabled;
     float Kp, Ki, Kd;
@@ -103,5 +103,5 @@ private:
     float LastPitch;
 };
 
-// SS_CrossTBTPump must declare:
+// SS_XTBTPump must declare:
 // friend class PID_TrimPitch;

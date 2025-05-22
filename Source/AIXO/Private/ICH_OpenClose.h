@@ -14,9 +14,11 @@ class ICH_OpenClose : public ICommandHandler
 protected:
     EOpenState State = EOpenState::CLOSED;
     float MoveTimer = 0.f;
-    float MoveDuration = 1.5f;
     bool bTargetOpen = false;
     ICH_PowerJunction *Owner = nullptr;
+
+public:
+    float MoveDuration = 1.5f;
 
 public:
     ICH_OpenClose(const FString& Name, ICH_PowerJunction* InOwner) { SystemName = Name; Owner = InOwner; }
@@ -28,16 +30,32 @@ public:
 
     virtual void Tick(float DeltaTime) override
     {
-    	if (Owner && !Owner->HasPower()) return;
+    	if (Owner && !Owner->HasPower()) {
+	        if (State == EOpenState::MOVING) {
+	        	if (MoveTimer == 0) State = EOpenState::CLOSED;
+	        	if (MoveTimer == MoveDuration) State = EOpenState::OPEN;
+	        }
+    		return;
+		}
         if (State == EOpenState::MOVING)
         {
-            MoveTimer += DeltaTime;
-            if (MoveTimer >= MoveDuration)
-            {
-                State = bTargetOpen ? EOpenState::OPEN : EOpenState::CLOSED;
-                MoveTimer = 0.f;
-                UpdateChange();
-            }
+        	if (bTargetOpen) {
+				MoveTimer += DeltaTime;
+				if (MoveTimer >= MoveDuration)
+				{
+					MoveTimer = MoveDuration;
+					State = EOpenState::OPEN;
+					UpdateChange();
+				}
+        	} else {
+				MoveTimer -= DeltaTime;
+				if (MoveTimer <= 0)
+				{
+					MoveTimer = 0;
+					State = EOpenState::CLOSED;
+					UpdateChange();
+				}
+        	}
         }
     }
 
@@ -52,10 +70,14 @@ public:
                 if (bOpen && State == EOpenState::OPEN) return ECommandResult::Handled;
                 if (!bOpen && State == EOpenState::CLOSED) return ECommandResult::Handled;
                 {
-                    State = EOpenState::MOVING;
-                    MoveTimer = 0.f;
+		        	if (bOpen) {
+						bTargetOpen = true;
+						State = EOpenState::MOVING;
+		        	} else {
+						bTargetOpen = false;
+						State = EOpenState::MOVING;
+		        	}
                     UpdateChange();
-                    bTargetOpen = bOpen;
                     return ECommandResult::Handled;
                 }
             }
@@ -102,4 +124,7 @@ public:
 
     bool IsOpen() const { return State == EOpenState::OPEN; }
     bool IsMoving() const { return State == EOpenState::MOVING; }
+    float GetMovementAmount() {
+    	return MoveTimer / MoveDuration;
+    }
 };

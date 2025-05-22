@@ -9,8 +9,9 @@ private:
 
 public:
     PWRJ_MultiConnJunction(const FString& name, ASubmarineState* InSubState, float InX, float InY, float InW=150, float InH=24)
-        : ICH_PowerJunction(name, InX, InY, InW, InH, false)  // not a power source
+        : ICH_PowerJunction(name, InX, InY, InW, InH)
     {
+		bIsPowerSource = false;  // not a power source
     }
 	virtual FString GetTypeString() const override { return TEXT("PWRJ_MultiConnJunction"); }
 };

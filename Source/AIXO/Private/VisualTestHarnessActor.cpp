@@ -41,13 +41,14 @@
 #include "SS_BowPlanes.h"
 #include "SS_ControlRoom.h"
 #include "SS_Countermeasures.h"
-#include "SS_CrossTBTPump.h"
+#include "SS_XTBTPump.h"
 #include "SS_Electrolysis.h"
 #include "SS_Elevator.h"
-#include "SS_FMBTVent.h"
+//#include "SS_FMBTVent.h"
 #include "SS_FTBTPump.h"
 #include "SS_MainMotor.h"
-#include "SS_RMBTVent.h"
+//#include "SS_RMBTVent.h"
+#include "SS_MBT.h"
 #include "SS_RTBTPump.h"
 #include "SS_Rudder.h"
 #include "SS_SolarPanels.h"
@@ -291,13 +292,13 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 			r.Min.Y = Value;
 			r.Max.X = VisExtent.Max.X;
 			r.Max.Y = Value+1;
-			RenderContext->DrawRectangle(r, FLinearColor(0.9f, 0.9f, 0.9f), false);
+			RenderContext->DrawRectangle(r, FLinearColor(0.8f, 0.8f, 0.8f), false);
 		} else if (Key[0] == 'X') {
 			r.Min.X = Value;
 			r.Min.Y = VisExtent.Min.Y;
 			r.Max.X = Value+1;
 			r.Max.Y = VisExtent.Max.Y;
-			RenderContext->DrawRectangle(r, FLinearColor(0.9f, 0.9f, 0.9f), false);
+			RenderContext->DrawRectangle(r, FLinearColor(0.8f, 0.8f, 0.8f), false);
 		}
 	}
 
@@ -309,11 +310,7 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
 //			ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();		// downcast without RTTI
 //			if (Junction)
 //			{
-//				r.Min.X = Junction->X - Junction->P;
-//				r.Max.X = Junction->X+Junction->W + Junction->P;
-//				r.Min.Y = Junction->Y - Junction->P;
-//				r.Max.Y = Junction->Y+Junction->H + Junction->P;
-//				RenderContext->DrawRectangle(r, FLinearColor::Yellow, true);
+//				Junction->RenderHighlights(*RenderContext);
 //			}
 //		}
 //	}
@@ -423,6 +420,7 @@ void AVisualTestHarnessActor::InitializeVisualization()
                 {
                     VizManager->AddJunction(Junction);
                     Junction->InitializeVisualElements(); // Ensure visuals are initialized
+                    Junction->CalculateExtentsVisualElements();
                 }
             }
         }
@@ -555,7 +553,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
 {
     TouchEvent::EType TouchType = (TouchEvent::EType)InTouchType;
     // Ignore mouse move events when no button is pressed (hover events)
-    if (TouchType == TouchEvent::EType::Move && !bIsPanning && !bIsPinching)
+    if (TouchType == TouchEvent::EType::Move && !bIsPanning && !bIsPinching && !bIsOnJunction)
     {
         return false;
     }
@@ -624,8 +622,15 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
             Evt.Type = TouchEvent::EType::Down;
             Evt.Position = WorldPosition;
             Evt.TouchID = PointerIndex;
+//UE_LOG(LogTemp, Log, TEXT("  Started touch at (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
 			VizManager->HandleTouchEvent(Evt, &CmdDistributor);
 			bIsOnJunction = true;
+			FTouchInfo& TouchInfo = ActiveTouches.Add(PointerIndex);
+			TouchInfo.PointerId = PointerIndex;
+			TouchInfo.InitialPosition = DiagramPosition;
+			TouchInfo.CurrentPosition = DiagramPosition;
+			TouchInfo.InitialPanOffset = ViewOffset * ViewScale;
+			TouchInfo.InitialScale = ViewScale;
             return true;  // Junction grabbed the event
         }
         else if (ActiveTouches.Num() == 0)
@@ -678,12 +683,14 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
         if (FTouchInfo* TouchInfo = ActiveTouches.Find(PointerIndex))
         {
             TouchInfo->CurrentPosition = DiagramPosition;
+//if (!bIsOnJunction) UE_LOG(LogTemp, Log, TEXT("  MISSING FLAG Moving touch at (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
             
             if (bIsOnJunction) {
 				TouchEvent Evt;
 				Evt.Type = TouchEvent::EType::Move;
 				Evt.Position = WorldPosition;
 				Evt.TouchID = PointerIndex;
+//UE_LOG(LogTemp, Log, TEXT("  Moving touch at (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
 				VizManager->HandleTouchEvent(Evt, &CmdDistributor);
 				return true;
             }
@@ -708,6 +715,13 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
                 return true;  // Pinch mode has the grab
             } 
         }
+//else {
+//UE_LOG(LogTemp, Log, TEXT("  NO POINTER %d Moving touch at (%.1f, %.1f)"), PointerIndex, DiagramPosition.X, DiagramPosition.Y);
+//for (TPair<int32, FTouchInfo> p : ActiveTouches) {
+////	TMap<int32, FTouchInfo> ActiveTouches;  // Map of pointer ID to touch info
+//UE_LOG(LogTemp, Log, TEXT("             %d Active touch"), get<1>(p).PointerId);
+//}
+//}
     }
     else if (TouchType == TouchEvent::EType::Up)
     {
@@ -717,6 +731,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
             Evt.Type = TouchEvent::EType::Up;
             Evt.Position = WorldPosition;
             Evt.TouchID = PointerIndex;
+//UE_LOG(LogTemp, Log, TEXT("  End touch at (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
 			VizManager->HandleTouchEvent(Evt, &CmdDistributor);
 			bIsOnJunction = false;
             bIsPanning = false;
@@ -745,6 +760,7 @@ bool AVisualTestHarnessActor::HandleMouseTap(const FVector2D& WidgetPosition, in
             Evt.Type = TouchEvent::EType::Cancel;
             Evt.Position = WorldPosition;
             Evt.TouchID = PointerIndex;
+//UE_LOG(LogTemp, Log, TEXT("  Cancel touch at (%.1f, %.1f)"), DiagramPosition.X, DiagramPosition.Y);
 			VizManager->HandleTouchEvent(Evt, &CmdDistributor);
 			bIsOnJunction = false;
             bIsPanning = false;
@@ -873,13 +889,13 @@ void AVisualTestHarnessActor::ApplyZoom(float Delta)
 
 void AVisualTestHarnessActor::ApplyPan(const FVector2D& NewPan, float Scale)
 {
-    UE_LOG(LogTemp, Log, TEXT("ApplyPan: NewPan=(%.1f, %.1f), CurrentOffset=(%.1f, %.1f), Scale=%.2f"),
-           NewPan.X, NewPan.Y, ViewOffset.X, ViewOffset.Y, Scale);
+//    UE_LOG(LogTemp, Log, TEXT("ApplyPan: NewPan=(%.1f, %.1f), CurrentOffset=(%.1f, %.1f), Scale=%.2f"),
+//           NewPan.X, NewPan.Y, ViewOffset.X, ViewOffset.Y, Scale);
     
     // Scale the pan delta by the initial scale to maintain consistent pan speed
     ViewOffset = NewPan / Scale;
     
-    UE_LOG(LogTemp, Log, TEXT("  New offset=(%.1f, %.1f)"), ViewOffset.X, ViewOffset.Y);
+//    UE_LOG(LogTemp, Log, TEXT("  New offset=(%.1f, %.1f)"), ViewOffset.X, ViewOffset.Y);
 }
 
 bool AVisualTestHarnessActor::IsPointInEmptySpace(const FVector2D& WorldPoint) const
@@ -959,9 +975,9 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	SS_BowPlanes *rbp = new SS_BowPlanes("RBP", SubmarineState.Get(), XC+150+75+16+3+13-1 + 30-1, 60-18, 80, 32);
 	rbp->MarkerX = TEXT("XC");
 	CmdDistributor.RegisterHandler(rbp);
-	SS_FMBTVent *fv = new SS_FMBTVent("FMBT", SubmarineState.Get(), XC+150-75-16-3-13+1, 10+90-8, 80, 32);
-	fv->MarkerX = TEXT("XC");
-	CmdDistributor.RegisterHandler(fv);
+//	SS_FMBTVent *fv = new SS_FMBTVent("FMBTVENT", SubmarineState.Get(), XC+150-75-16-3-13+1, 10+90-8, 80, 32);
+//	fv->MarkerX = TEXT("XC");
+//	CmdDistributor.RegisterHandler(fv);
 
 	PWRJ_MultiConnJunction *mfj = new PWRJ_MultiConnJunction("FJ", SubmarineState.Get(), XC+150+25, 110, 100, 40);
 	mfj->MarkerX = TEXT("XC");
@@ -969,14 +985,14 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("sonar_feed", mfj, 0, 50, sonar, 2, 2+64/2);
 	MakeConnectingSegment("rbp_feed", mfj, 0, 100-20, rbp, 1, 8+8);
 	MakeConnectingSegment("lbp_feed", mfj, 0, 20, lbp, 3, 8+8);
-	MakeConnectingSegment("fmbt_feed", mfj, 1, 10, fv, 3, 8+8);
+//	MakeConnectingSegment("fmbt_feed", mfj, 1, 10, fv, 3, 8+8);
 	
 	int32 Y1 = 168 + 10;
 	SS_TorpedoTube *tt = new SS_TorpedoTube("TORPEDOROOM", SubmarineState.Get(), XC+150, Y1-2, 150, 24);
 	tt->MarkerX = TEXT("XC");
 	tt->MarkerY = TEXT("Y1");
 	CmdDistributor.RegisterHandler(tt);
-	SS_FTBTPump *ftp = new SS_FTBTPump("FTBT", SubmarineState.Get(), XC+150, Y1+30, 150, 24);
+	SS_FTBTPump *ftp = new SS_FTBTPump("FTBTPUMP", SubmarineState.Get(), XC+150, Y1+30, 150, 24);
 	ftp->MarkerX = TEXT("XC");
 	CmdDistributor.RegisterHandler(ftp);
 		
@@ -1027,7 +1043,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	al->MarkerX = TEXT("XC");
 	al->MarkerY = TEXT("Y3");
 	CmdDistributor.RegisterHandler(al);
-	SS_CrossTBTPump *xtbt = new SS_CrossTBTPump("CROSSTBT", SubmarineState.Get(), XC+150, Y3+62, 150, 24);
+	SS_XTBTPump *xtbt = new SS_XTBTPump("XTBTPUMP", SubmarineState.Get(), XC+150, Y3+62, 150, 24);
 	xtbt->MarkerX = TEXT("XC");
 	xtbt->MarkerY = TEXT("Y3");
 	CmdDistributor.RegisterHandler(xtbt);
@@ -1050,6 +1066,14 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("r3_al", mfjR3, 1, 42, al, 3, 8+4);
 	MakeConnectingSegment("r3_xtbt", mfjR3, 1, 74, xtbt, 3, 8+4);
 
+//
+
+	int32 Y4 = Y3+10+192 + 10 - 40;
+	int32 Y5 = Y4+62 + 10 + 10;
+	int32 Y6 = Y5+47 + 20 + 10;
+	int32 Y7 = Y6+49 + 18 + 10;
+	int32 Y8 = Y7+50 + 18 + 10;
+
 // Engine Room
 
 	int32 erdy = 80;
@@ -1060,6 +1084,44 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	CmdDistributor.RegisterHandler(mfE);
 	MakeConnectingSegment("el", mfjL3, 1, 60, mfE, 3, 80-24-24+erdy);
 	MakeConnectingSegment("er", mfjR3, 1, 85+20, mfE, 3, 105-24-4+erdy);
+
+	int32 YE1 = 10+90-8;
+	PWRJ_MultiConnJunction *mfEu3 = new PWRJ_MultiConnJunction("E3", SubmarineState.Get(), XC+30, YE1+6, 20, 20);
+	mfEu3->MarkerX = TEXT("XC");
+	mfEu3->MarkerY = TEXT("YE1");
+	CmdDistributor.RegisterHandler(mfEu3);
+
+	PWRJ_MultiConnJunction *mfEu2 = new PWRJ_MultiConnJunction("E2", SubmarineState.Get(), XC+30, YE1+6 + 76, 20, 20);
+	mfEu2->MarkerX = TEXT("XC");
+	mfEu2->MarkerY = TEXT("YE1");
+	CmdDistributor.RegisterHandler(mfEu2);
+
+	PWRJ_MultiConnJunction *mfEu1 = new PWRJ_MultiConnJunction("E1", SubmarineState.Get(), XC+30, YE1+6 + 152, 20, 20);
+	mfEu1->MarkerX = TEXT("XC");
+	mfEu1->MarkerY = TEXT("YE1");
+	CmdDistributor.RegisterHandler(mfEu1);
+	MakeConnectingSegment("e1", mfEu1, 2, 10, mfE, 0, 10);
+	MakeConnectingSegment("e2", mfEu2, 2, 10, mfEu1, 0, 10);
+	MakeConnectingSegment("e3", mfEu3, 2, 10, mfEu2, 0, 10);
+
+	int32 YE3 = Y8+37-10;
+	PWRJ_MultiConnJunction *mfEu4 = new PWRJ_MultiConnJunction("E4", SubmarineState.Get(), XC+30, YE3+6 - 152, 20, 20);
+	mfEu4->MarkerX = TEXT("XC");
+	mfEu4->MarkerY = TEXT("YE3");
+	CmdDistributor.RegisterHandler(mfEu4);
+
+	PWRJ_MultiConnJunction *mfEu5 = new PWRJ_MultiConnJunction("E5", SubmarineState.Get(), XC+30, YE3+6 - 76, 20, 20);
+	mfEu5->MarkerX = TEXT("XC");
+	mfEu5->MarkerY = TEXT("YE3");
+	CmdDistributor.RegisterHandler(mfEu5);
+
+	PWRJ_MultiConnJunction *mfEu6 = new PWRJ_MultiConnJunction("E6", SubmarineState.Get(), XC+30, YE3+6, 20, 20);
+	mfEu6->MarkerX = TEXT("XC");
+	mfEu6->MarkerY = TEXT("YE3");
+	CmdDistributor.RegisterHandler(mfEu6);
+	MakeConnectingSegment("e4", mfEu4, 0, 10, mfE, 2, 10);
+	MakeConnectingSegment("e5", mfEu5, 0, 10, mfEu4, 2, 10);
+	MakeConnectingSegment("e6", mfEu6, 0, 10, mfEu5, 2, 10);
 
 	int32 XCE = 64;
 	SS_CO2Scrubber *co2 = new SS_CO2Scrubber("CO2SCRUBBER", SubmarineState.Get(), XCE, YE+20, 120, 24);
@@ -1095,7 +1157,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 
 //
 
-	int32 Y4 = Y3+10+192 + 10 - 40;
+//	int32 Y4 = Y3+10+192 + 10 - 40;
 	SS_AIP *aip = new SS_AIP("FUELCELL", SubmarineState.Get(), XC+150, Y4, 150, 32);
 	aip->MarkerX = TEXT("XC");
 	aip->MarkerY = TEXT("Y4");
@@ -1115,7 +1177,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("r4", mfjR4, 0, 10, mfjR3, 2, 10);
 	MakeConnectingSegment("r4_aip", mfjR4, 1, 12, aip, 3, 16);
 
-	int32 Y5 = Y4+62 + 10 + 10;
+//	int32 Y5 = Y4+62 + 10 + 10;
 	SS_MainMotor *mm = new SS_MainMotor("MAINMOTOR", SubmarineState.Get(), XC+150, Y5-4, 150, 32);
 	mm->MarkerX = TEXT("XC");
 	mm->MarkerY = TEXT("Y5");
@@ -1136,7 +1198,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("r5", mfjR5, 0, 10, mfjR4, 2, 10);
 	MakeConnectingSegment("r5_mm", mfjR5, 1, 12, mm, 3, 8+8);
 
-	int32 Y6 = Y5+47 + 20 + 10;
+//	int32 Y6 = Y5+47 + 20 + 10;
 	SS_Battery *b2 = new SS_Battery2("BATTERY2", SubmarineState.Get(), XC+150, Y6-4, 150, 32);
 	b2->MarkerX = TEXT("XC");
 	b2->MarkerY = TEXT("Y6");
@@ -1157,8 +1219,8 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("r6", mfjR6, 0, 10, mfjR5, 2, 10);
 	MakeConnectingSegment("r6_b2", mfjR6, 1, 12, b2, 3, 16);
 
-	int32 Y7 = Y6+49 + 18 + 10;
-	SS_RTBTPump *rtp = new SS_RTBTPump("RTBT", SubmarineState.Get(), XC+150, Y7+2-4, 150, 24);
+//	int32 Y7 = Y6+49 + 18 + 10;
+	SS_RTBTPump *rtp = new SS_RTBTPump("RTBTPUMP", SubmarineState.Get(), XC+150, Y7+2-4, 150, 24);
 	rtp->MarkerX = TEXT("XC");
 	rtp->MarkerY = TEXT("Y7");
 	CmdDistributor.RegisterHandler(rtp);
@@ -1184,7 +1246,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("r7_rtbt", mfjR7, 1, 10, rtp, 3, 12);
 	MakeConnectingSegment("r7_rov", mfjR7, 1, 42, rov, 3, 12);
 
-	int32 Y8 = Y7+50 + 18 + 10;
+//	int32 Y8 = Y7+50 + 18 + 10;
 	PWRJ_MultiConnJunction *mrj = new PWRJ_MultiConnJunction("RJ", SubmarineState.Get(), XC+150+25, Y8+4, 100, 40);
 	mrj->MarkerX = TEXT("XC");
 	mrj->MarkerY = TEXT("Y8");
@@ -1192,11 +1254,11 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("rr", mrj, 3, 10, mfjR7, 2, 10);
 	MakeConnectingSegment("lr", mrj, 1, 10, mfjL7, 2, 10);
 
-	SS_RMBTVent *rmbt = new SS_RMBTVent("RMBT", SubmarineState.Get(), XC+150-75-16-3-13+1, Y8+37-10, 80, 32);
-	rmbt->MarkerX = TEXT("XC");
-	rmbt->MarkerY = TEXT("Y8");
-	CmdDistributor.RegisterHandler(rmbt);
-	MakeConnectingSegment("rmbt_feed", mrj, 1, 30, rmbt, 3, 8+8);
+//	SS_RMBTVent *rmbtvent = new SS_RMBTVent("RMBTVENT", SubmarineState.Get(), XC+150-75-16-3-13+1, Y8+37-10, 80, 32);
+//	rmbtvent->MarkerX = TEXT("XC");
+//	rmbtvent->MarkerY = TEXT("Y8");
+//	CmdDistributor.RegisterHandler(rmbtvent);
+//	MakeConnectingSegment("rmbt_feed", mrj, 1, 30, rmbtvent, 3, 8+8);
 
 	SS_Rudder *rudder = new SS_Rudder("RUDDER", SubmarineState.Get(), XC+150-75-16-3-13+1 + 40, Y8+77, 80, 32);
 	rudder->MarkerX = TEXT("XC");
@@ -1266,6 +1328,22 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	tsa->MarkerY = TEXT("YCS");
 	CmdDistributor.RegisterHandler(tsa);
 	MakeConnectingSegment("tsa_feed", tsa, 1, 12, s2, 3, 10+40*2);
+
+//
+
+	SS_MBT *rmbt = new SS_MBT("RMBT", SubmarineState.Get(), XCE, YE3-14);
+	rmbt->MarkerX = TEXT("XCE");
+	rmbt->MarkerY = TEXT("YE3");
+	CmdDistributor.RegisterHandler(rmbt);
+	MakeConnectingSegment("rmbt_feed", mfEu6, 1, 10, rmbt, 3, rmbt->H/2);
+
+	SS_MBT *fmbt = new SS_MBT("FMBT", SubmarineState.Get(), XCE, YE1-14);
+	fmbt->MarkerX = TEXT("XCE");
+	fmbt->MarkerY = TEXT("YE1");
+	CmdDistributor.RegisterHandler(fmbt);
+	MakeConnectingSegment("fmbt_feed", mfEu3, 1, 10, fmbt, 3, fmbt->H/2);
+
+//
 
 b1->SetPortEnabled(0, false);
 b1->SetPortEnabled(1, false);

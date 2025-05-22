@@ -42,6 +42,7 @@ public:
 	virtual void Render(RenderingContext& Context) override
 	{
 		MSJ_Powered_OnOff::Render(Context);
+return;		// old
 		//
 		int32 erdy = 80;
 		int32 fH = 32;
@@ -111,6 +112,7 @@ public:
 
 	virtual void RenderUnderlay(RenderingContext& Context) override
 	{
+return;		// old
 		int32 erdy = 80;
 		int32 fH = 32;
 		int32 fW = W;

@@ -5,14 +5,14 @@
 #include "ICH_Pump.h"
 #include "SubmarineState.h"
 
-class SS_CrossTBTPump : public PWRJ_MultiSelectJunction
+class SS_XTBTPump : public PWRJ_MultiSelectJunction
 {
 protected:
     ICH_Pump *PumpPart;
     ASubmarineState* SubState;
 
 public:
-    SS_CrossTBTPump(const FString& Name, ASubmarineState* InSubState, float InX, float InY, float InW=150, float InH=24)
+    SS_XTBTPump(const FString& Name, ASubmarineState* InSubState, float InX, float InY, float InW=150, float InH=24)
         : PWRJ_MultiSelectJunction(Name, InX, InY, InW, InH),
           SubState(InSubState)
     {
@@ -20,7 +20,7 @@ public:
 		DefaultPowerUsage = 1.0f; // Base power usage when active
 		DefaultNoiseLevel = 0.2f; // Base noise level when active          
     }
-	virtual FString GetTypeString() const override { return TEXT("SS_CrossTBTPump"); }
+	virtual FString GetTypeString() const override { return TEXT("SS_XTBTPump"); }
 
     virtual ECommandResult HandleCommand(const FString& Aspect, const FString& Command, const FString& Value) override
     {
