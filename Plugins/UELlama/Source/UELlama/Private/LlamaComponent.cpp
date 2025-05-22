@@ -58,7 +58,7 @@
 namespace Internal
 {
     // --- Llama Constructor/Destructor ---
-    Llama::Llama(ULlamaComponent* InOwningComponent) : OwningLlamaComponentPtr(InOwningComponent), ThreadHandle([this]() { ThreadRun_LlamaThread(); }) {}
+    Llama::Llama() : ThreadHandle([this]() { ThreadRun_LlamaThread(); }) {}
 
     Llama::~Llama()
     {
@@ -340,9 +340,7 @@ MirroredKvCacheTokens.clear();
 		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Updating KV for changed BlockType %d."), (int)BlockTypeToUpdate);
 
 		bIsGenerating = true; // Acquire "generation lock" for this entire operation
-		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
-			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
-		});
+		qLlamaToMain.enqueue([this]() { if (setIsGeneratingCb) setIsGeneratingCb(true); });
 
 		// --- 1. Retokenize the changed fixed block ---
 		// _TokenizeAndStoreFixedBlockInternal just updates the FTokenizedContextBlock in FixedContextBlocks
@@ -455,9 +453,7 @@ MirroredKvCacheTokens.clear();
 		}
 
 		bIsGenerating = false; // Acquire "generation lock" for this entire operation
-		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
-			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
-		});
+		qLlamaToMain.enqueue([this]() { if (setIsGeneratingCb) setIsGeneratingCb(false); });
 
 		// --- 5. Broadcast Context Visual Update ---
 		// It's good to update the visualizer after the KV cache is refreshed.
@@ -837,7 +833,14 @@ if (eos_reached) {
 				ProcessedAIOutputStr.RemoveAt(ToolCallStartTagPos, ToolCallEndTagPos + FString(TEXT("</tool_call>")).Len() - ToolCallStartTagPos);
 
                 bToolCallMadeThisTurn = true;
-                qLlamaToMain.enqueue([this, ToolCallPayloadForMainThread]() { if (toolCallCb) toolCallCb(ToolCallPayloadForMainThread); });
+                qLlamaToMain.enqueue([this, ToolCallPayloadForMainThread]() {
+                	if (toolCallCb) toolCallCb(ToolCallPayloadForMainThread);
+                	if (tokenCb) {
+                		tokenCb(TEXT("\n"));
+                		tokenCb(ToolCallPayloadForMainThread);
+                		tokenCb(TEXT("\n"));
+					}
+				});
 
                 UE_LOG(LogTemp, Log, TEXT("LlamaThread: Tool call detected: '%s'"), *ToolCallFullTagForHistory);
             }
@@ -1209,7 +1212,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 
 	void Llama::BroadcastContextVisualUpdate_LlamaThread(int32 nTokens, float sDecode, float sGenerate)
 	{
-		if (!model || !ctx || !OwningLlamaComponentPtr) { // Added OwningLlamaComponentPtr check
+		if (!model || !ctx) {
 			UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Cannot broadcast context visual update, model/ctx/owner not ready."));
 			return;
 		}
@@ -1302,9 +1305,9 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 			else if (Turn.Role.Equals(TEXT("tool"), ESearchCase::IgnoreCase)) {
 				VisTurnType = EContextVisBlockType::ConversationTurnToolResponse; // Or a specific "ToolCall" type
 				RoleDisplayName = TEXT("Tool Call (by Assistant)"); // Clarify for tooltip
-			} else if (Turn.Role.Equals(TEXT("tool_response"), ESearchCase::IgnoreCase)) { // Assuming you use this role for system's tool response
-				 VisTurnType = EContextVisBlockType::ConversationTurnToolResponse;
-				 RoleDisplayName = TEXT("Tool Response (from System)");
+			} else if (Turn.Role.Equals(TEXT("tool_response"), ESearchCase::IgnoreCase)) { // use this role for system's tool response
+				VisTurnType = EContextVisBlockType::ConversationTurnToolResponse;
+				RoleDisplayName = TEXT("Tool Response (from System)");
 			}
 			
 			// We are visualizing the *content* tokens of each turn.
@@ -1344,27 +1347,32 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		}
 
 		// Marshal to main thread
-		if (OwningLlamaComponentPtr) {
-			// Create a copy of Payload specifically for the lambda to capture.
-			// This ensures the data persists until the lambda executes.
-			FContextVisPayload PayloadCopy = Payload;
+		FContextVisPayload PayloadCopy = Payload;
+		qLlamaToMain.enqueue([this, PayloadCopy]() { if (contextChangedCb) contextChangedCb(PayloadCopy); });
 
-//			UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda queued."));
-
-			qLlamaToMain.enqueue([OwnerPtr = OwningLlamaComponentPtr, CapturedPayload = PayloadCopy]() {
-				// This lambda now runs on the Main Thread.
-//				UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda starts on main thread."));
-				// OwnerPtr and CapturedPayload are copies held by the lambda.
-				if (OwnerPtr && OwnerPtr->IsValidLowLevel()) { // Good practice to check validity on main thread
-					OwnerPtr->ForwardContextUpdateToGameThread(CapturedPayload);
-//					UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread lambda executed. dec ms=%.f gen ms=%.f"), CapturedPayload.fFmsPerTokenDecode, CapturedPayload.fFmsPerTokenGenerate);
-				} else {
-					UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's OwningLlamaComponentPtr was null or invalid when ForwardContextUpdateToGameThread lambda executed."));
-				}
-			});
-		} else {
-			UE_LOG(LogTemp, Error, TEXT("LlamaThread: OwningLlamaComponentPtr is null in BroadcastContextVisualUpdate. Cannot send update."));
-		}
+//		// Marshal to main thread
+//		if (OwningLlamaComponentPtr) {
+//			// Create a copy of Payload specifically for the lambda to capture.
+//			// This ensures the data persists until the lambda executes.
+//			FContextVisPayload PayloadCopy = Payload;
+//
+////			UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda queued."));
+//
+//			qLlamaToMain.enqueue([this, PayloadCopy]() { if (contextChangedCb) contextChangedCb(PayloadCopy); });
+////			qLlamaToMain.enqueue([OwnerPtr = OwningLlamaComponentPtr, CapturedPayload = PayloadCopy]() {
+////				// This lambda now runs on the Main Thread.
+//////				UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda starts on main thread."));
+////				// OwnerPtr and CapturedPayload are copies held by the lambda.
+////				if (OwnerPtr && OwnerPtr->IsValidLowLevel()) { // Good practice to check validity on main thread
+////					OwnerPtr->ForwardContextUpdateToGameThread(CapturedPayload);
+//////					UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread lambda executed. dec ms=%.f gen ms=%.f"), CapturedPayload.fFmsPerTokenDecode, CapturedPayload.fFmsPerTokenGenerate);
+////				} else {
+////					UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's OwningLlamaComponentPtr was null or invalid when ForwardContextUpdateToGameThread lambda executed."));
+////				}
+////			});
+//		} else {
+//			UE_LOG(LogTemp, Error, TEXT("LlamaThread: OwningLlamaComponentPtr is null in BroadcastContextVisualUpdate. Cannot send update."));
+//		}
 
 //  UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Broadcasting Context Update. TotalTokenCapacity: %d, KvCacheDecodedTokenCount: %d, NumVisualBlocks: %d, decodems: %g, genms: %g"), Payload.TotalTokenCapacity, Payload.KvCacheDecodedTokenCount, Payload.Blocks.Num(), Payload.fFmsPerTokenDecode, Payload.fFmsPerTokenGenerate);
 /*
@@ -1413,9 +1421,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 			return;
 		}
 		bIsGenerating = true; // Acquire "generation lock" for this entire operation
-		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
-			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
-		});
+		qLlamaToMain.enqueue([this]() { if (setIsGeneratingCb) setIsGeneratingCb(true); });
 		// This flag will be reset at the very end of this function, or in DecodeTokensAndSample if it errors early.
 
 		UE_LOG(LogTemp, Log, TEXT("LlamaThread: BEGIN ProcessInput: '%s', HFS: '%s', Hint: '%s'"), *InputTextFStr, *HighFrequencyContextTextFStr, *InputTypeHintFStr);
@@ -1424,6 +1430,15 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		std::string hfs_std = TCHAR_TO_UTF8(*HighFrequencyContextTextFStr);
 		std::vector<llama_token> NewHFS_Tokens = my_llama_tokenize(model, hfs_std, false, false);
 		CurrentHighFrequencyStateTokens = NewHFS_Tokens; // Store for AssembleFullPromptForTurn
+
+		qLlamaToMain.enqueue([this, InputTextFStr]() mutable { 
+//			if (tokenCb) tokenCb("\n"+MoveTemp(InputTextFStr));
+			if (tokenCb) {
+				tokenCb(TEXT("\n"));
+				tokenCb(InputTextFStr);
+				tokenCb(TEXT("\n"));
+			}
+		});
 
 		std::string input_content_std = TCHAR_TO_UTF8(*InputTextFStr); // This is the *content* of the input
 //        input_content_std += "<|im_end|>\n";		// ??? this token was just missing
@@ -1483,9 +1498,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		// DecodeTokensAndSample should set bIsGenerating = false upon its completion or error.
 		// This is a final check.
 		bIsGenerating = false; 
-		qLlamaToMain.enqueue([Owner = OwningLlamaComponentPtr, bGenState = bIsGenerating.load(std::memory_order_acquire)]() {
-			if (Owner) Owner->SetIsLlamaGenerating_MainThread(bGenState);
-		});
+		qLlamaToMain.enqueue([this]() { if (setIsGeneratingCb) setIsGeneratingCb(false); });
 
 		BroadcastContextVisualUpdate_LlamaThread();
 //        LlamaLogContext("ProcessInputAndGenerate_LlamaThread finished");
@@ -1511,7 +1524,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
             qMainToLlama.processQ();
 
             // If not actively generating, sleep a bit to yield CPU
-            if (!bIsGenerating.load()) {
+            if (!bIsGenerating.load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             // The actual generation logic is now part of DecodeTokensAndSample,
@@ -1537,22 +1550,22 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.bStartWithTickEnabled = true;
     HarnessActor = nullptr;
-    LlamaInternal = std::make_unique<Internal::Llama>(this);
+    LlamaInternal = std::make_unique<Internal::Llama>();
 
     // Setup delegates to marshal callbacks from LlamaInternal to ULlamaComponent's Blueprint delegates
     LlamaInternal->tokenCb = [this](FString NewToken) {
-        LlamaInternal->qLlamaToMain.enqueue([this, NewToken]() { // Ensure BP delegate is called on game thread
+        { // Ensure BP delegate is called on game thread
             OnNewTokenGenerated.Broadcast(NewToken);
-        });
+        }
     };
     LlamaInternal->fullContextDumpCb = [this](FString ContextDump) {
-        LlamaInternal->qLlamaToMain.enqueue([this, ContextDump]() {
+        {
             OnFullContextDumpReady.Broadcast(ContextDump);
-        });
+        }
     };
 	// In ULlamaComponent constructor, where toolCallCb is set up:
 	LlamaInternal->toolCallCb = [this](FString ToolCallJsonRaw) {
-		LlamaInternal->qLlamaToMain.enqueue([this, ToolCallJsonRaw]() {
+		{
 			UE_LOG(LogTemp, Log, TEXT("MainThread: Received ToolCall: %s"), *ToolCallJsonRaw);
 			// Parse ToolCallJsonRaw to get tool name and arguments
 			TSharedPtr<FJsonObject> JsonObject;
@@ -1600,28 +1613,34 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
 				 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Invalid tool call JSON format.\"}"));
 			}
 			// OnToolCallDetected.Broadcast(ToolCallJsonRaw); // If BP also needs raw string
-		});
+		}
 	};
     LlamaInternal->errorCb = [this](FString ErrorMessage) {
-        LlamaInternal->qLlamaToMain.enqueue([this, ErrorMessage]() {
+        {
             OnLlamaErrorOccurred.Broadcast(ErrorMessage);
-        });
+        }
     };
     LlamaInternal->progressCb = [this](float Progress) {
-        LlamaInternal->qLlamaToMain.enqueue([this, Progress]() {
+		{
             OnLlamaLoadingProgressDelegate.Broadcast(Progress);
-        });
+        }
     };
     LlamaInternal->readyCb = [this](FString ReadyMessage) {
-        LlamaInternal->qLlamaToMain.enqueue([this, ReadyMessage]() {
+        {
             OnLlamaReady.Broadcast(ReadyMessage);
             bIsLlamaCoreReady = true;
-        });
+        }
     };
     LlamaInternal->contextChangedCb = [this](const FContextVisPayload& contextBlocks) {
-        LlamaInternal->qLlamaToMain.enqueue([this, contextBlocks]() {
+        {
             OnLlamaContextChangedDelegate.Broadcast(contextBlocks);
-        });
+			ForwardContextUpdateToGameThread(contextBlocks);
+        }
+    };
+    LlamaInternal->setIsGeneratingCb = [this](bool isGen) {
+        {
+        	bIsLlamaGenerating = isGen;
+        }
     };
 }
 
@@ -1856,7 +1875,7 @@ LowFreqContextBlock = "";		// TESTING because this changes quickly, as soon as t
 void ULlamaComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     if (LlamaInternal) {
-        LlamaInternal->bIsRunning = false; // Signal thread to stop
+        LlamaInternal->SignalStopRunning(); // Signal thread to stop
         // The LlamaInternal destructor will join the thread.
         // If you need to explicitly queue a shutdown command:
         // LlamaInternal->qMainToLlama.enqueue([this]() {
@@ -2277,11 +2296,6 @@ void ULlamaComponent::HandleToolCall_CommandSubmarineSystem(const FString& Query
 			return;
 		}
 		Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
-		// if SystemName has a space, it's an error
-		if (TempQueryString.Split(TEXT(" "), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT' with no spaces.\"}"));
-			return;
-		}
 		// split Aspect into Aspect Verb[ Value]
 		if (!TempQueryString.Split(TEXT(" "), &Aspect, &Verb, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
 			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT VERB'.\"}"));
@@ -2319,6 +2333,8 @@ void ULlamaComponent::HandleToolCall_CommandSubmarineSystem(const FString& Query
 				FString::Printf(TEXT("{\"error\": \"Command handled with error.\"}")));
 			return;
 		}
+		SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+			FString::Printf(TEXT("{\"accepted\": \"Command processed.\"}")));
 	}
 	SendToolResponseToLlama(TEXT("execute_submarine_command"), 
 		FString::Printf(TEXT("{\"error\": \"Command completed.\"}")));

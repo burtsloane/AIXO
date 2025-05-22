@@ -376,7 +376,8 @@ public:
 	{
 		ICH_PowerJunction::InitializeVisualElements(); // Call base class if it does anything
 
-		FBox2D ToggleBounds(FVector2D(3-36, 22 - GetDY()), FVector2D(3-22, 34 - GetDY())); 
+		float by = 24 - GetDY();
+		FBox2D ToggleBounds(FVector2D(3-36, by), FVector2D(3-22, by+12)); 
 		VisualElements.Add(new VE_ToggleButton(this, 
 												 ToggleBounds,
 												 TEXT("PUMPRATE"),      // Query Aspect
@@ -398,7 +399,7 @@ public:
 //												 TEXT("/"),          // Text On
 //												 TEXT("/")          // Text Off
 //												 ));
-		FBox2D ToggleBounds3(FVector2D(3-36-18, 22 - GetDY()), FVector2D(3-22-18, 34 - GetDY())); 
+		FBox2D ToggleBounds3(FVector2D(3-36-18, by), FVector2D(3-22-18, by+12)); 
 		VisualElements.Add(new VE_ToggleButton(this, 
 												 ToggleBounds3,
 												 TEXT("PUMPRATE"),      // Query Aspect
@@ -411,9 +412,9 @@ public:
 												 ));
 		FBox2D ToggleBounds4;
 		if (SystemName == "RTBT") {
-			ToggleBounds4 = FBox2D(FVector2D(45, H + 22 - GetDY() - 12), FVector2D(45+12, H + 22 - GetDY())); 
+			ToggleBounds4 = FBox2D(FVector2D(45, H + 18 - GetDY() - 12), FVector2D(45+12, H + 18 - GetDY())); 
 		} else {
-			ToggleBounds4 = FBox2D(FVector2D(45, 10-20 - GetDY() - 12), FVector2D(45+12, 10-20 - GetDY())); 
+			ToggleBounds4 = FBox2D(FVector2D(45, 14-20 - GetDY() - 12), FVector2D(45+14, 12-20 - GetDY())); 
 		}
 		VisualElements.Add(new VE_MomentaryButton(this, 
 												 ToggleBounds4,

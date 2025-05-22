@@ -88,7 +88,7 @@ namespace Internal
     class Llama
     {
     public:
-	    Llama(ULlamaComponent* InOwningComponent); // NEW: Constructor takes owner
+	    Llama();
         ~Llama();
 
         // MODIFIED/NEW API for Llama thread
@@ -97,6 +97,19 @@ namespace Internal
         void UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockType, const FString& NewTextContent);
         void ProcessInputAndGenerate_LlamaThread(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
         void RequestFullContextDump_LlamaThread(); // Renamed for clarity
+		void SignalStopRunning() { bIsRunning = false; }
+
+		// these generally send a broadcast to Unreal blueprints; only two do anything else
+        std::function<void(FString)> tokenCb;
+        std::function<void(FString)> fullContextDumpCb;
+        std::function<void(FString)> errorCb;    // For errors
+        std::function<void(float)> progressCb;   // For loading
+        std::function<void(const FContextVisPayload&)> contextChangedCb;    // For context change update * also calls ForwardContextUpdateToGameThread
+        std::function<void(FString)> readyCb;    // For ready, sets bIsLlamaCoreReady and broadcasts
+        std::function<void(FString)> toolCallCb; // For tool calls, DO THE TOOL CALL PROCESS, call SendToolResponseToLlama (no broadcast)
+        std::function<void(bool)> setIsGeneratingCb; // copy the busy flag up the chain
+
+	private:
 		std::string AssembleFullContextForDump();
 		void DetokenizeAndAppend(std::string& TargetString, const std::vector<llama_token>& TokensToDetokenize, const llama_model* ModelHandle);
 		std::string CleanString(std::string p_str);
@@ -104,15 +117,12 @@ namespace Internal
 		void BroadcastContextVisualUpdate_LlamaThread(int32 nTokens=0, float msDecode=0.0f, float msGenerate=0.0f);
 		void LlamaLogContext(FString Label);
 
-        std::function<void(FString)> tokenCb;
-        std::function<void(FString)> fullContextDumpCb;
-        std::function<void(FString)> toolCallCb; // For tool calls
-        std::function<void(FString)> errorCb;    // For errors
-        std::function<void(float)> progressCb;   // For loading
-        std::function<void(FString)> readyCb;    // For ready
-        std::function<void(const FContextVisPayload&)> contextChangedCb;    // For context change update
+        // --- Threading & Queues ---
+	public:
+        Q qMainToLlama; // Renamed for clarity
+        Q qLlamaToMain; // Renamed for clarity
 
-    private:
+	private:
         // --- Core Llama State ---
         llama_model* model = nullptr;
         llama_context* ctx = nullptr;
@@ -121,7 +131,6 @@ namespace Internal
         llama_sampler* sampler_chain_instance = nullptr;
         const llama_vocab* vocab = nullptr;
         int32_t n_ctx_from_model = 0; // Actual context window size
-	    ULlamaComponent* OwningLlamaComponentPtr; // Member to store the owner
 
         // --- Context Block Management (Llama Thread Owned) ---
         struct FTokenizedContextBlock {
@@ -155,12 +164,8 @@ namespace Internal
         std::vector<std::vector<llama_token>> stopSequencesTokens;
         std::atomic<bool> bIsGenerating = false; // True while actively sampling tokens
 
-        // --- Threading & Queues ---
-public:
-        Q qMainToLlama; // Renamed for clarity
-        Q qLlamaToMain; // Renamed for clarity
+	private:
         std::atomic<bool> bIsRunning = true; // Renamed for clarity
-private:
         std::thread ThreadHandle; // Renamed for clarity
 
         // --- Helper Methods (Llama Thread) ---
@@ -207,12 +212,6 @@ public:
 
 	void ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor);
 	void ForwardContextUpdateToGameThread(const FContextVisPayload& Payload);
-	void HandleToolCall_GetSystemInfo(const FString& QueryString);
-	void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
-	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
-	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
-	std::string MakeHFSString();
-	FString MakeCommandHandlerString(ICommandHandler *ich);
 
     // Delegates
     UPROPERTY(BlueprintAssignable)
@@ -239,15 +238,11 @@ public:
 	//
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
-    FString PathToModel; // Renamed from pathToModel
+    FString PathToModel;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
-    FString SystemPromptFileName; // Renamed from prompt
+    FString SystemPromptFileName;
 
-    // UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Llama|Config")
-    // std::vector<FString> StopSequences; // Renamed from stopSequences - this will be handled by system prompt now
-
-    // --- NEW API ---
     UFUNCTION(BlueprintCallable, Category = "Llama")
     void UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent);
 
@@ -256,6 +251,14 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Llama|Debug")
     void TriggerFullContextDump();
+
+private:
+	void HandleToolCall_GetSystemInfo(const FString& QueryString);
+	void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
+	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
+	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
+	std::string MakeHFSString();
+	FString MakeCommandHandlerString(ICommandHandler *ich);
 
 private:
     std::unique_ptr<Internal::Llama> LlamaInternal; // Renamed from llama
@@ -272,20 +275,14 @@ private:
     bool bPendingLowFrequencyStateUpdate = false;
     FString PendingLowFrequencyStateText;
 
-    // Add a flag the Llama thread can set when it becomes idle
-    // This needs to be atomic or protected if ULlamaComponent Tick reads it
-    // while Llama thread writes it.
-    // However, it's safer if Llama thread signals idle via qLlamaToMain.
 public:
-    std::atomic<bool> bIsLlamaGenerating; // This can be set by Llama thread via a callback
-                                         // when it starts/stops generation.
-
     UFUNCTION(BlueprintPure, Category = "Llama")
     bool IsLlamaBusy() const { return bIsLlamaGenerating.load(std::memory_order_acquire); }
 
     UFUNCTION(BlueprintPure, Category = "Llama")
     bool IsLlamaReady() const { return bIsLlamaCoreReady; } // You already have bIsLlamaCoreReady
 
-	public: void SetIsLlamaGenerating_MainThread(bool bNewState) { bIsLlamaGenerating = bNewState; }
+private:
+    std::atomic<bool> bIsLlamaGenerating; // This can be set by Llama thread via a callback when it starts/stops generation.
 };
 

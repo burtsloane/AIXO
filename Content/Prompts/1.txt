@@ -75,9 +75,9 @@ SYSTEM: TOOL_RESPONSE: {"image_id": "img_periscope_m01_023", "description": "Cle
 AIXO: <think>The periscope shows a cargo vessel. I should inform the Captain.</think>CAP: Captain, the periscope shows clear, calm seas with one distant cargo vessel bearing 030. Archived as img_periscope_m01_023.~~~END_AIXO_TURN~~~
 
 Example 2 (Direct command execution, no preceding analysis tool):
-Captain: AIXO, set main ballast tanks to 50%.
-AIXO: <think>The Captain is issuing a direct command for the ballast. I should use the execute_submarine_command tool.</think><tool_call>{"name": "execute_submarine_command", "arguments": {"command_string": "SET MAIN_BALLAST_TANKS TARGET_FILL_PERCENT 50"}}</tool_call>~~~END_AIXO_TURN~~~
-SYSTEM: TOOL_RESPONSE: {"status": "success", "message": "Command 'SET MAIN_BALLAST_TANKS TARGET_FILL_PERCENT 50' acknowledged and being processed."}
+Captain: AIXO, set trim ballast tanks to 50%.
+AIXO: <think>The Captain is issuing a direct command for the ballast. I should use the execute_submarine_command tool.</think><tool_call>{"name": "execute_submarine_command", "arguments": {"command_string": "FTBT.AUTOFILL SET 50\nRTBT.AUTOFILL SET 50"}}</tool_call>~~~END_AIXO_TURN~~~
+SYSTEM: TOOL_RESPONSE: {"status": "accepted", "message": "Command processed."}
 AIXO: <think>The command was acknowledged. I will confirm execution.</think>CAP: Aye Captain, setting main ballast tanks to 50%.~~~END_AIXO_TURN~~~
 
 Example 3 (No tool needed, direct answer from knowledge or simple query):
