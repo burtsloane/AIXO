@@ -30,9 +30,6 @@
 #include "LLMProvider.h"
 #include "ILLMVisualizationInterface.h"
 
-// Add forward declaration for AIXO's ICommandHandler
-namespace AIXO { class ICommandHandler; }
-
 #include "LlamaComponent.generated.h"
 
 //#define TRACK_PARALLEL_CONTEXT_TOKENS
