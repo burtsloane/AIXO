@@ -1639,8 +1639,7 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
 			FinalPayload.bIsLlamaCoreActuallyReady = this->bIsLlamaCoreReady;
 			FinalPayload.bIsLlamaCurrentlyIdle = this->bIsLlamaCoreReady && !this->bIsLlamaGenerating.load(std::memory_order_acquire);
 			ForwardContextUpdateToGameThread(FinalPayload);
-	// STUBBED OUT
-//            OnLlamaContextChangedDelegate.Broadcast(FinalPayload);
+            OnLlamaContextChangedDelegate.Broadcast(FinalPayload);
         }
     };
     LlamaInternal->setIsGeneratingCb = [this](bool isGen) {
@@ -1665,171 +1664,36 @@ void ULlamaComponent::BeginPlay()
 
 FString ULlamaComponent::MakeSystemsBlock()
 {
-#ifdef FULL_SYSTEMS_DESC_IN_CONTEXT
-	FString str = "\nSUBMARINE SYSTEMS:\n";		// StaticWorldInfo
-	for (const ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers)
-	{
-		if (Handler)
-		{
-			const ICH_PowerJunction *pj = Handler->GetAsPowerJunction();
-			if (!pj) continue;
-			if (pj && pj->IsPowerSource()) str += "**" + Handler->GetSystemName() + " IS A POWER SOURCE\n";
-			else str += "**" + Handler->GetSystemName() + "\n";
-			FString gd = Handler->GetSystemGuidance();
-			if (gd.Len() > 0) str += "*GUIDANCE: " + gd + "\n";
-			FString st = Handler->GetSystemStatus();
-			if (st.Len() > 0) str += "*STATUS: " + st + "\n";
-			TArray<FString> cm = Handler->GetAvailableCommands();
-			if (cm.Num() > 0) {
-				str += "*AVAILABLE COMMANDS:\n";
-				for (FString& s : cm) str += s + "\n";
-			}
-			TArray<FString> qr = Handler->GetAvailableQueries();
-			if (qr.Num() > 0) {
-				str += "*AVAILABLE QUERIES:";
-				for (FString& s : qr) str += " " + s;
-				str += "\n";
-			}
-			//
-			if (pj) {
-				str += "*CONNECTS TO:";
-				for (int i=0; i<pj->Ports.Num(); i++) {
-					str += " " + pj->Ports[i]->GetName();
-				}
-				str += "\n";
-			}
-		}
-//break;		// TESTING because this is too long
-	}
-	str += "\nPOWER GRID SEGMENTS:\n";
-	for (const PWR_PowerSegment* seg : HarnessActor->CmdDistributor.GetSegments())
-	{
-		if (seg->GetJunctionA()) str += FString::Printf(TEXT("%s.A->%s.%d\n"), *seg->GetName(), *seg->GetJunctionA()->GetSystemName(), seg->GetPortA());
-		else str += FString::Printf(TEXT("%s.A: NULL.%d\n"), *seg->GetName(), seg->GetPortA());
-		if (seg->GetJunctionB()) str += FString::Printf(TEXT("%s.B->%s.%d\n"), *seg->GetName(), *seg->GetJunctionB()->GetSystemName(), seg->GetPortB());
-		else str += FString::Printf(TEXT("%s.B: NULL.%d\n"), *seg->GetName(), seg->GetPortB());
-	
-	}
-#else // !FULL_SYSTEMS_DESC_IN_CONTEXT
-	FString str = "\nSUBMARINE SYSTEMS:";
-	
-	// STUBBED OUT
-//	for (const ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers)
-//	{
-//		str += " " + Handler->GetSystemName();
-//	}
-#endif // !FULL_SYSTEMS_DESC_IN_CONTEXT
-	return str;
+    if (!GameInterface)
+    {
+        return TEXT("// STUBBED OUT: No game interface available");
+    }
+    return GameInterface->GetSystemsContextBlock();
 }
 
 FString ULlamaComponent::MakeStatusBlock()
 {
-#ifdef FULL_SYSTEMS_DESC_IN_CONTEXT
-	FString str = "\nSUBMARINE SYSTEMS STATUS:\n";
-// & queryEntireState - changes by command
-// & per-junction status, power usage and noise - changes by command or damage or auto
-// & & GetSystemStatus(): projected battery/LOX depletion times - GetSystemStatus()
-// & & the entire path to the power source, to avoid hallucinations
-	for (const ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers)
-	{
-		if (Handler)
-		{
-			const ICH_PowerJunction *pj = Handler->GetAsPowerJunction();
-			if (!pj) continue;
-			str += "**" + Handler->GetSystemName();
-			switch (pj->GetStatus()) {
-				case EPowerJunctionStatus::NORMAL:
-					str += " NORMAL";
-					break;
-				case EPowerJunctionStatus::DAMAGED50:
-					str += " 50%% DAMAGED";
-					break;
-				case EPowerJunctionStatus::DAMAGED100:
-					str += " DAMAGED";
-					break;
-				case EPowerJunctionStatus::DESTROYED:
-					str += " DESTROYED";
-					break;
-			}
-			if (pj->IsPowerSource()) {
-				str += FString::Printf(TEXT(" POWER AVAILABLE=%g"), pj->GetPowerAvailable());
-			} else {
-				str += FString::Printf(TEXT(" POWER USAGE=%g"), pj->GetCurrentPowerUsage());
-			}
-			str += FString::Printf(TEXT(" NOISE=%g"), pj->GetCurrentNoiseLevel());
-			str += "\n";
-			// queried state
-			TArray<FString> qs = Handler->QueryEntireState();
-			if (qs.Num() > 0) {
-//						str += Handler->GetSystemName() + " ENTIRE STATE:\n";
-				for (FString& s : qs) str += "    " + s + "\n";
-			}
-			// TODO: status: projected battery/LOX depletion times
-			FString sts = Handler->GetSystemStatus();
-			if (sts.Len() > 0) {
-				str += Handler->GetSystemName() + " STATUS:\n" + sts + "\n";
-			}
-			// entire path to the power source
-			str += Handler->GetSystemName() + " POWER PATH: ";
-			const TArray<PWR_PowerSegment*> PPath = pj->GetPathToSourceSegments();
-			const TArray<ICH_PowerJunction*> JPath = pj->GetPathToSourceJunction();
-			for (int i=0; i < JPath.Num(); i++) {
-				if (i > 0) str += ":";
-				str += JPath[i]->GetSystemName();
-				if (PPath.Num() > i) str += ":" + PPath[i]->GetName();
-				else if (PPath.Num() < i) str += "<PATH MISSING>";
-			}
-			str += "\n";
-		}
-//break;		// TESTING because this is too long
-	}
-// & per-segment status and power usage/direction - changes by command or damage or auto
-	str += "\nPOWER GRID SEGMENTS STATUS:\n";
-	for (const PWR_PowerSegment* seg : HarnessActor->CmdDistributor.GetSegments())
-	{
-		str += "**" + seg->GetName();
-		switch (seg->GetStatus()) {
-			case EPowerSegmentStatus::NORMAL:
-				str += " NORMAL";
-				break;
-			case EPowerSegmentStatus::SHORTED:
-				str += " SHORTED";
-				break;
-			case EPowerSegmentStatus::OPENED:
-				str += " OPENED";
-				break;
-		}
-		str += FString::Printf(TEXT(" POWER=%g"), seg->GetPowerLevel());
-//		str += FString::Printf(TEXT(" DIRECTION=%g"), seg->GetPowerFlowDirection());
-		str += "\n";
-	}
-	return str;
-#else // !FULL_SYSTEMS_DESC_IN_CONTEXT
-	return "SUBMARINE SYSTEMS STATUS CONTAINED IN SYSTEMS INFO\n";
-#endif // !FULL_SYSTEMS_DESC_IN_CONTEXT
+    if (!GameInterface)
+    {
+        return TEXT("// STUBBED OUT: No game interface available");
+    }
+    return GameInterface->GetLowFrequencyStateBlock();
 }
 
 void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor)		// called by VisualTestHarnessActor::BeginPlay because it is first
 {
-	// STUBBED OUT
-//	if (HarnessActor)
-//	{
-//		if (HarnessActor->CmdDistributor.CommandHandlers.Num() == 0) return;
-//	}
-
     // Initialize the provider if not already done
     if (!Provider)
     {
         InitializeProvider();
     }
 
-	// STUBBED OUT
-//    // Update the system prompt with the harness actor's command handlers
-//    if (HarnessActor)
-//    {
-//        FString SystemsBlock = MakeSystemsBlock();
-//        UpdateContextBlock(ELlamaContextBlockType::SystemPrompt, SystemsBlock);
-//    }
+    // Update the system prompt with the harness actor's command handlers
+    if (HarnessActor)
+    {
+        FString SystemsBlock = MakeSystemsBlock();
+        UpdateContextBlock(ELlamaContextBlockType::SystemPrompt, SystemsBlock);
+    }
 
 	HarnessActor = InHarnessActor;
 	if (HarnessActor)
@@ -2093,35 +1957,37 @@ void ULlamaComponent::TickComponent(float DeltaTime,
 
 std::string ULlamaComponent::MakeHFSString()
 {
-	// STUBBED OUT
-	return "\n";
-//	ASubmarineState *ss = HarnessActor->SubmarineState;
-//	std::string str;// = "\nSUBMARINE STATE:";
-//	str += "\nLOCATION: " + std::to_string(ss->SubmarineLocation.X) + "," +
-//	std::to_string(ss->SubmarineLocation.Y) + "," +
-//	std::to_string(ss->SubmarineLocation.Z);
-//	str += "\nROTATION: " + std::to_string(ss->SubmarineRotation.Pitch) + "," +
-//	std::to_string(ss->SubmarineRotation.Yaw) + "," +
-//	std::to_string(ss->SubmarineRotation.Roll);
-//	str += "\nVELOCITY: " + std::to_string(ss->Velocity.X) + "," +
-//	std::to_string(ss->Velocity.Y) + "," +
-//	std::to_string(ss->Velocity.Z);
-//	str += "\nLOXLEVEL: " + std::to_string(ss->LOXLevel);
-//	str += "\nFLASK1LEVEL: " + std::to_string(ss->Flask1Level);
-//	str += "\nFLASK2LEVEL: " + std::to_string(ss->Flask1Level);
-//	str += "\nBATTERY1LEVEL: " + std::to_string(ss->Battery1Level);
-//	str += "\nBATTERY2LEVEL: " + std::to_string(ss->Battery2Level);
-//	str += "\nALERTLEVEL: " + std::string(TCHAR_TO_UTF8(*ss->AlertLevel));
-//	str += "\nRUDDERANGLE: " + std::to_string(ss->RudderAngle);
-//	str += "\nELEVATORANGLE: " + std::to_string(ss->ElevatorAngle);
-//	str += "\nRIGHTBOWPLANEANGLE: " + std::to_string(ss->RightBowPlanesAngle);
-//	str += "\nLEFTBOWPLANEANGLE: " + std::to_string(ss->LeftBowPlanesAngle);
-//	str += "\nFORWARDMBTLEVEL: " + std::to_string(ss->ForwardMBTLevel);
-//	str += "\nREARMBTLEVEL: " + std::to_string(ss->RearMBTLevel);
-//	str += "\nFORWARDTBTLEVEL: " + std::to_string(ss->ForwardTBTLevel);
-//	str += "\nREARTBTLEVEL: " + std::to_string(ss->RearTBTLevel);
-//	str += "\n\n";
-//	return str;
+	// STUBBED OUT: move to AIXO
+return "\n";
+/*
+	ASubmarineState *ss = HarnessActor->SubmarineState;
+	std::string str;// = "\nSUBMARINE STATE:";
+	str += "\nLOCATION: " + std::to_string(ss->SubmarineLocation.X) + "," +
+	std::to_string(ss->SubmarineLocation.Y) + "," +
+	std::to_string(ss->SubmarineLocation.Z);
+	str += "\nROTATION: " + std::to_string(ss->SubmarineRotation.Pitch) + "," +
+	std::to_string(ss->SubmarineRotation.Yaw) + "," +
+	std::to_string(ss->SubmarineRotation.Roll);
+	str += "\nVELOCITY: " + std::to_string(ss->Velocity.X) + "," +
+	std::to_string(ss->Velocity.Y) + "," +
+	std::to_string(ss->Velocity.Z);
+	str += "\nLOXLEVEL: " + std::to_string(ss->LOXLevel);
+	str += "\nFLASK1LEVEL: " + std::to_string(ss->Flask1Level);
+	str += "\nFLASK2LEVEL: " + std::to_string(ss->Flask1Level);
+	str += "\nBATTERY1LEVEL: " + std::to_string(ss->Battery1Level);
+	str += "\nBATTERY2LEVEL: " + std::to_string(ss->Battery2Level);
+	str += "\nALERTLEVEL: " + std::string(TCHAR_TO_UTF8(*ss->AlertLevel));
+	str += "\nRUDDERANGLE: " + std::to_string(ss->RudderAngle);
+	str += "\nELEVATORANGLE: " + std::to_string(ss->ElevatorAngle);
+	str += "\nRIGHTBOWPLANEANGLE: " + std::to_string(ss->RightBowPlanesAngle);
+	str += "\nLEFTBOWPLANEANGLE: " + std::to_string(ss->LeftBowPlanesAngle);
+	str += "\nFORWARDMBTLEVEL: " + std::to_string(ss->ForwardMBTLevel);
+	str += "\nREARMBTLEVEL: " + std::to_string(ss->RearMBTLevel);
+	str += "\nFORWARDTBTLEVEL: " + std::to_string(ss->ForwardTBTLevel);
+	str += "\nREARTBTLEVEL: " + std::to_string(ss->RearTBTLevel);
+	str += "\n\n";
+	return str;
+*/
 }
 
 void ULlamaComponent::ProcessInput(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint)
@@ -2145,146 +2011,37 @@ void ULlamaComponent::HandleTokenGenerated(const FString& Token)  // Renamed fro
 
 
 // This function is called by the lambda queued from Internal::Llama::toolCallCb
-void ULlamaComponent::HandleToolCall_GetSystemInfo(const FString& SystemName)
+void ULlamaComponent::HandleToolCall_GetSystemInfo(const FString& QueryString)
 {
-    if (!HarnessActor) {
-        SendToolResponseToLlama(TEXT("get_system_info"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
+    if (!GameInterface)
+    {
+        SendToolResponseToLlama(TEXT("get_system_info"), TEXT("{\"error\": \"No game interface available\"}"));
         return;
     }
-    
-    UE_LOG(LogTemp, Log, TEXT("ToolCall: GetSystemInfo - System: '%s'"), *SystemName);
-    
-	// STUBBED OUT
-/*
-    ICommandHandler* FoundHandler = nullptr;
-    for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
-        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
-            FoundHandler = Handler;
-            break;
-        }
-    }
-    
-    if (!FoundHandler) {
-        SendToolResponseToLlama(TEXT("get_system_info"),
-                                FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
-        return;
-    }
-    
-    FString str = MakeCommandHandlerString(FoundHandler);
-*/FString str = "";
-
-    SendToolResponseToLlama(TEXT("get_system_info"), str);
+    FString Response = GameInterface->HandleGetSystemInfo(QueryString);
+    SendToolResponseToLlama(TEXT("get_system_info"), Response);
 }
 
 void ULlamaComponent::HandleToolCall_QuerySubmarineSystem(const FString& QueryString)
 {
-    if (!HarnessActor) {
-        SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
+    if (!GameInterface)
+    {
+        SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"No game interface available\"}"));
         return;
     }
-    
-    FString SystemName;
-    FString Aspect;
-    FString TempQueryString = QueryString.TrimStartAndEnd();
-    
-    if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-        SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
-        return;
-    }
-    Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
-    
-    UE_LOG(LogTemp, Log, TEXT("ToolCall: QuerySubmarineSystem - System: '%s', Aspect: '%s'"), *SystemName, *Aspect);
-    
-	// STUBBED OUT
-/*
-    ICommandHandler* FoundHandler = nullptr;
-    for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
-        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
-            FoundHandler = Handler;
-            break;
-        }
-    }
-    
-    if (!FoundHandler) {
-        SendToolResponseToLlama(TEXT("query_submarine_system"),
-                                FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
-        return;
-    }
-    
-    FString str = FoundHandler->QueryState(Aspect);
-*/FString str = "";
-
-    SendToolResponseToLlama(TEXT("query_submarine_system"), str);
+    FString Response = GameInterface->HandleQuerySubmarineSystem(QueryString);
+    SendToolResponseToLlama(TEXT("query_submarine_system"), Response);
 }
 
 void ULlamaComponent::HandleToolCall_CommandSubmarineSystem(const FString& QueryString)
 {
-    if (!HarnessActor) {
-        SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
+    if (!GameInterface)
+    {
+        SendToolResponseToLlama(TEXT("command_submarine_system"), TEXT("{\"error\": \"No game interface available\"}"));
         return;
     }
-    
-    TArray<FString> Cmds;
-    QueryString.ParseIntoArray(Cmds, TEXT("\n"), true);
-    
-	// STUBBED OUT
-/*
-    for (FString TempQueryString: Cmds) {
-        FString SystemName;
-        FString Aspect;
-        FString Verb;
-        FString Value;
-        
-        if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-            SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
-            return;
-        }
-        Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
-        // split Aspect into Aspect Verb[ Value]
-        if (!TempQueryString.Split(TEXT(" "), &Aspect, &Verb, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-            SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT VERB'.\"}"));
-            return;
-        }
-        TempQueryString.Split(TEXT(" "), &Verb, &Value, ESearchCase::IgnoreCase, ESearchDir::FromStart);
-        
-        ICommandHandler* FoundHandler = nullptr;
-        for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
-            if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
-                FoundHandler = Handler;
-                break;
-            }
-        }
-        
-        if (!FoundHandler) {
-            SendToolResponseToLlama(TEXT("execute_submarine_command"),
-                                    FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
-            return;
-        }
-        
-        ECommandResult r = FoundHandler->HandleCommand(Aspect, Verb, Value);
-        if (r == ECommandResult::Blocked) {
-            SendToolResponseToLlama(TEXT("execute_submarine_command"),
-                                    FString::Printf(TEXT("{\"error\": \"Command blocked.\"}")));
-            return;
-        }
-        if (r == ECommandResult::NotHandled) {
-            SendToolResponseToLlama(TEXT("execute_submarine_command"),
-                                    FString::Printf(TEXT("{\"error\": \"Command not handled.\"}")));
-            return;
-        }
-        if (r == ECommandResult::HandledWithError) {
-            SendToolResponseToLlama(TEXT("execute_submarine_command"),
-                                    FString::Printf(TEXT("{\"error\": \"Command handled with error.\"}")));
-            return;
-        }
-        SendToolResponseToLlama(TEXT("execute_submarine_command"),
-                                FString::Printf(TEXT("{\"accepted\": \"Command processed.\"}")));
-    }
-    SendToolResponseToLlama(TEXT("execute_submarine_command"),
-                            FString::Printf(TEXT("{\"error\": \"Command completed.\"}")));
-*/
-    SendToolResponseToLlama(TEXT("execute_submarine_command"),
-                            FString::Printf(TEXT("{\"error\": \"Command broken.\"}")));
+    FString Response = GameInterface->HandleCommandSubmarineSystem(QueryString);
+    SendToolResponseToLlama(TEXT("command_submarine_system"), Response);
 }
 
 void ULlamaComponent::SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent)
@@ -2302,7 +2059,7 @@ void ULlamaComponent::HandleContextChanged(const FContextVisPayload& Payload)
     CurrentVisualization = Payload;
     
     // Forward to both the delegate and the interface
-    OnVisualizationUpdated.Broadcast(Payload);
+    OnLlamaContextChangedDelegate.Broadcast(Payload);
     if (VisualizationInterface)
     {
         VisualizationInterface->UpdateVisualization(Payload);
@@ -2362,15 +2119,53 @@ void ULlamaComponent::TriggerFullContextDump()
     }
 }
 
-void ULlamaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+void ULlamaComponent::ForwardContextUpdateToGameThread(const FContextVisPayload& LlamaThreadPayload)
 {
-    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-    
-    // No tick functionality needed for now since we're using a separate thread for LLM operations
+//	UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread was called."));
+    // This function is now executing on the Game Thread.
+    // It's safe to broadcast a delegate that UMG widgets are bound to.
+    if (OnLlamaContextChangedDelegate.IsBound())
+    {
+        FContextVisPayload FinalPayload = LlamaThreadPayload; // Copy
+
+//    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Forwarding to UI. PendingSWI: %d (UpToDate: %d), PendingLFS: %d (UpToDate: %d), CoreReady: %d, IsGenerating: %d (Idle: %d)"),
+//        bPendingStaticWorldInfoUpdate, FinalPayload.bIsStaticWorldInfoUpToDate,
+//        bPendingLowFrequencyStateUpdate, FinalPayload.bIsLowFrequencyStateUpToDate,
+//        FinalPayload.bIsLlamaCoreActuallyReady,
+//        this->bIsLlamaGenerating.load(std::memory_order_acquire), FinalPayload.bIsLlamaCurrentlyIdle
+//    );
+
+        OnLlamaContextChangedDelegate.Broadcast(FinalPayload);
+//		UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread OnLlamaContextChangedDelegate."));
+    }
+    else
+    {
+        // Optional: Log if no one is listening, though often widgets might bind/unbind dynamically.
+        // UE_LOG(LogTemp, Verbose, TEXT("ULlamaComponent: OnLlamaContextChangedDelegate broadcast, but no listeners."));
+    }
 }
 
 void ULlamaComponent::SetVisualizationInterface(TScriptInterface<ILLMVisualizationInterface> InVisualizationInterface)
 {
     VisualizationInterface = InVisualizationInterface;
 }
+
+void ULlamaComponent::SetGameInterface(TScriptInterface<ILLMGameInterface> InGameInterface)
+{
+    GameInterface = InGameInterface;
+    
+    // Initialize the provider if not already done
+    if (!Provider)
+    {
+        InitializeProvider();
+    }
+    
+    // Update the system prompt with the game's command handlers
+    if (GameInterface)
+    {
+        FString SystemsBlock = MakeSystemsBlock();
+        UpdateContextBlock(ELlamaContextBlockType::SystemPrompt, SystemsBlock);
+    }
+}
+
 

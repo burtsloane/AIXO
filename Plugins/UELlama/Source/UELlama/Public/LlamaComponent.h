@@ -29,12 +29,14 @@
 #include "ContextVisualizationData.h"
 #include "LLMProvider.h"
 #include "ILLMVisualizationInterface.h"
+#include "ILLMGameInterface.h"
 
 #include "LlamaComponent.generated.h"
 
 //#define TRACK_PARALLEL_CONTEXT_TOKENS
 
-class AVisualTestHarnessActor;
+// Remove VisualTestHarnessActor forward declaration
+// class AVisualTestHarnessActor;
 
 using namespace std;
 
@@ -227,8 +229,8 @@ public:
                                enum ELevelTick TickType,
                                FActorComponentTickFunction* ThisTickFunction) override;
 
-	void ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor);
-	void ForwardContextUpdateToGameThread(const FContextVisPayload& Payload);
+    // Replace ActivateLlamaComponent with SetGameInterface
+    void SetGameInterface(TScriptInterface<ILLMGameInterface> InGameInterface);
 
     // Delegates
     UPROPERTY(BlueprintAssignable)
@@ -254,6 +256,9 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Llama")
     FOnTokenGenerated OnTokenGenerated;
+
+    UPROPERTY(BlueprintAssignable, Category = "Llama")
+    FOnContextChanged OnLlamaContextChangedDelegate;
 
 	//
 
@@ -329,31 +334,33 @@ protected:
     // Visualization
     UPROPERTY(BlueprintReadOnly, Category = "LLM")
     FContextVisPayload CurrentVisualization;
-    
-    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnVisualizationUpdated, const FContextVisPayload&, Payload);
-    UPROPERTY(BlueprintAssignable, Category = "LLM")
-    FOnVisualizationUpdated OnVisualizationUpdated;
 
     // The visualization interface
     UPROPERTY()
     TScriptInterface<ILLMVisualizationInterface> VisualizationInterface;
 
 private:
-	void HandleToolCall_GetSystemInfo(const FString& QueryString);
-	void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
-	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
-	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
-	std::string MakeHFSString();
-	FString MakeCommandHandlerString(const FString& SystemName);
+    // Remove HarnessActor
+    // AVisualTestHarnessActor* HarnessActor;
+    
+    // Add game interface
+    UPROPERTY()
+    TScriptInterface<ILLMGameInterface> GameInterface;
+
+    // Update the stubbed functions to use GameInterface
+    FString MakeSystemsBlock();
+    FString MakeStatusBlock();
+    void HandleToolCall_GetSystemInfo(const FString& QueryString);
+    void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
+    void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
+
+    // ... rest of existing code ...
 
 private:
     std::unique_ptr<Internal::Llama> LlamaInternal; // Renamed from llama
-	AVisualTestHarnessActor* HarnessActor;
     bool bIsLlamaCoreReady = false; // Set by callback from Llama thread
 	FString SystemsContextBlockRecent;
 	FString LowFreqContextBlockRecent;
-	FString MakeSystemsBlock();
-	FString MakeStatusBlock();
 
 private:
     bool bPendingStaticWorldInfoUpdate = false;
