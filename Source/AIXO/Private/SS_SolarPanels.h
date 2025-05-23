@@ -120,8 +120,8 @@ for (int i=0; i<Out.Num(); i++) UE_LOG(LogTemp, Warning, TEXT("                 
 												 TEXT("EXTEND SET false"),   // Command Off
 												 TEXT("OUT"),			// expected value for "ON"
 												 TEXT("IN"),			// expected value for "OFF"
-												 TEXT("IN"),          // Text On
-												 TEXT("OUT")          // Text Off
+												 TEXT("OUT"),          // Text On
+												 TEXT("IN")          // Text Off
 												 ));
 	}
 };

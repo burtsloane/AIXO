@@ -121,8 +121,8 @@ public:
 												 TEXT("OPEN SET false"),   // Command Off
 												 TEXT("OPEN"),			// expected value for "ON"
 												 TEXT("CLOSED"),			// expected value for "OFF"
-												 TEXT("CLOSE"),          // Text On
-												 TEXT("OPEN")          // Text Off
+												 TEXT("OPEN"),          // Text On
+												 TEXT("CLOSE")          // Text Off
 												 ));
 	}
 };

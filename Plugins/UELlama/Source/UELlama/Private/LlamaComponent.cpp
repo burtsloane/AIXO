@@ -1627,14 +1627,19 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
     };
     LlamaInternal->readyCb = [this](FString ReadyMessage) {
         {
-            OnLlamaReady.Broadcast(ReadyMessage);
             bIsLlamaCoreReady = true;
+            OnLlamaReady.Broadcast(ReadyMessage);
         }
     };
     LlamaInternal->contextChangedCb = [this](const FContextVisPayload& contextBlocks) {
         {
-            OnLlamaContextChangedDelegate.Broadcast(contextBlocks);
-			ForwardContextUpdateToGameThread(contextBlocks);
+        	FContextVisPayload FinalPayload = (FContextVisPayload&)contextBlocks;
+			FinalPayload.bIsStaticWorldInfoUpToDate = !bPendingStaticWorldInfoUpdate; // If pending, it's not up-to-date on Llama thread yet
+			FinalPayload.bIsLowFrequencyStateUpToDate = !bPendingLowFrequencyStateUpdate;
+			FinalPayload.bIsLlamaCoreActuallyReady = this->bIsLlamaCoreReady;
+			FinalPayload.bIsLlamaCurrentlyIdle = this->bIsLlamaCoreReady && !this->bIsLlamaGenerating.load(std::memory_order_acquire);
+			ForwardContextUpdateToGameThread(FinalPayload);
+            OnLlamaContextChangedDelegate.Broadcast(FinalPayload);
         }
     };
     LlamaInternal->setIsGeneratingCb = [this](bool isGen) {
@@ -2076,10 +2081,6 @@ void ULlamaComponent::ForwardContextUpdateToGameThread(const FContextVisPayload&
     if (OnLlamaContextChangedDelegate.IsBound())
     {
         FContextVisPayload FinalPayload = LlamaThreadPayload; // Copy
-        FinalPayload.bIsStaticWorldInfoUpToDate = !bPendingStaticWorldInfoUpdate; // If pending, it's not up-to-date on Llama thread yet
-        FinalPayload.bIsLowFrequencyStateUpToDate = !bPendingLowFrequencyStateUpdate;
-        FinalPayload.bIsLlamaCoreActuallyReady = this->bIsLlamaCoreReady;
-        FinalPayload.bIsLlamaCurrentlyIdle = this->bIsLlamaCoreReady && !this->bIsLlamaGenerating.load(std::memory_order_acquire);
 
 //    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Forwarding to UI. PendingSWI: %d (UpToDate: %d), PendingLFS: %d (UpToDate: %d), CoreReady: %d, IsGenerating: %d (Idle: %d)"),
 //        bPendingStaticWorldInfoUpdate, FinalPayload.bIsStaticWorldInfoUpToDate,

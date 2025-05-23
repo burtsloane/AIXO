@@ -143,8 +143,8 @@ public:
 												 TEXT("ON SET false"),   // Command Off
 												 TEXT("true"),			// expected value for "ON"
 												 TEXT("false"),			// expected value for "OFF"
-												 TEXT("OFF"),          // Text On
-												 TEXT("ON")          // Text Off
+												 TEXT("ON"),          // Text On
+												 TEXT("OFF")          // Text Off
 												 ));
 	}
 

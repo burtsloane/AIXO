@@ -53,6 +53,7 @@
 #include "SS_Rudder.h"
 #include "SS_SolarPanels.h"
 #include "SS_Sonar.h"
+#include "SS_Flask.h"
 #include "SS_TBT.h"
 #include "SS_TorpedoLoader.h"
 #include "SS_TorpedoTube.h"
@@ -1079,12 +1080,12 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 
 	int32 erdy = 80;
 	int32 YE = Y3+6-erdy;	//Y1+70+134;
-	PWRJ_MultiConnJunction *mfE = new PWRJ_MultiConnJunction("ER", SubmarineState.Get(), XC+30, YE+4+18, 20, 220);
+	PWRJ_MultiConnJunction *mfE = new PWRJ_MultiConnJunction("ER", SubmarineState.Get(), XC+30, YE+4+18+40, 20, 220-40);
 	mfE->MarkerX = TEXT("XC");
 	mfE->MarkerY = TEXT("Y3");
 	CmdDistributor.RegisterHandler(mfE);
-	MakeConnectingSegment("el", mfjL3, 1, 60, mfE, 3, 80-24-24+erdy);
-	MakeConnectingSegment("er", mfjR3, 1, 85+20, mfE, 3, 105-24-4+erdy);
+	MakeConnectingSegment("el", mfjL3, 1, 60, mfE, 3, 40-24-24+erdy);
+	MakeConnectingSegment("er", mfjR3, 1, 85+20, mfE, 3, 65-24-4+erdy);
 
 	int32 YE1 = 10+90-8;
 	PWRJ_MultiConnJunction *mfEu3 = new PWRJ_MultiConnJunction("E3", SubmarineState.Get(), XC+30, YE1+6, 20, 20);
@@ -1092,7 +1093,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	mfEu3->MarkerY = TEXT("YE1");
 	CmdDistributor.RegisterHandler(mfEu3);
 
-	PWRJ_MultiConnJunction *mfEu2 = new PWRJ_MultiConnJunction("E2", SubmarineState.Get(), XC+30, YE1+6 + 76, 20, 20);
+	PWRJ_MultiConnJunction *mfEu2 = new PWRJ_MultiConnJunction("E2", SubmarineState.Get(), XC+30, YE1+6 + 76-4+1, 20, 20);
 	mfEu2->MarkerX = TEXT("XC");
 	mfEu2->MarkerY = TEXT("YE1");
 	CmdDistributor.RegisterHandler(mfEu2);
@@ -1111,7 +1112,7 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	mfEu4->MarkerY = TEXT("YE3");
 	CmdDistributor.RegisterHandler(mfEu4);
 
-	PWRJ_MultiConnJunction *mfEu5 = new PWRJ_MultiConnJunction("E5", SubmarineState.Get(), XC+30, YE3+6 - 76, 20, 20);
+	PWRJ_MultiConnJunction *mfEu5 = new PWRJ_MultiConnJunction("E5", SubmarineState.Get(), XC+30, YE3+6 - 76+4, 20, 20);
 	mfEu5->MarkerX = TEXT("XC");
 	mfEu5->MarkerY = TEXT("YE3");
 	CmdDistributor.RegisterHandler(mfEu5);
@@ -1125,36 +1126,36 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	MakeConnectingSegment("e6", mfEu6, 0, 10, mfEu5, 2, 10);
 
 	int32 XCE = 64;
-	SS_CO2Scrubber *co2 = new SS_CO2Scrubber("CO2SCRUBBER", SubmarineState.Get(), XCE, YE+20, 120, 24);
+	SS_CO2Scrubber *co2 = new SS_CO2Scrubber("CO2SCRUBBER", SubmarineState.Get(), XCE, YE+20+40, 120, 24);
 	co2->MarkerX = TEXT("XCE");
 	co2->MarkerY = TEXT("YE");
 	CmdDistributor.RegisterHandler(co2);
 	MakeConnectingSegment("er_elec", mfE, 1, 10, co2, 3, 8+4);
-	SS_Degaussing *dgau = new SS_Degaussing("DEGAUSSER", SubmarineState.Get(), XCE, YE+20+40, 120, 24);
+	SS_Degaussing *dgau = new SS_Degaussing("DEGAUSSER", SubmarineState.Get(), XCE, YE+20+40*2, 120, 24);
 	dgau->MarkerX = TEXT("XCE");
 	dgau->MarkerY = TEXT("YE");
 	CmdDistributor.RegisterHandler(dgau);
 	MakeConnectingSegment("er_dgau", mfE, 1, 10+40, dgau, 3, 8+4);
-	SS_AirCompressor *ac = new SS_AirCompressor("AIRCOMPRESSOR", SubmarineState.Get(), XCE-30, YE+20+40*2, 120+30, 24);
-	ac->MarkerX = TEXT("XCE");
-	ac->MarkerY = TEXT("YE");
-	CmdDistributor.RegisterHandler(ac);
-	MakeConnectingSegment("er_ac", mfE, 1, 10+40*2, ac, 3, 8+4);
+//	SS_AirCompressor *ac = new SS_AirCompressor("AIRCOMPRESSOR", SubmarineState.Get(), XCE-30, YE+20+40*2, 120+30, 24);
+//	ac->MarkerX = TEXT("XCE");
+//	ac->MarkerY = TEXT("YE");
+//	CmdDistributor.RegisterHandler(ac);
+//	MakeConnectingSegment("er_ac", mfE, 1, 10+40*1, ac, 3, 8+4);
 	SS_Dehumidifier *dh = new SS_Dehumidifier("DEHUMIDIFIER", SubmarineState.Get(), XCE, YE+20+40*3, 120, 24);
 	dh->MarkerX = TEXT("XCE");
 	dh->MarkerY = TEXT("YE");
 	CmdDistributor.RegisterHandler(dh);
-	MakeConnectingSegment("er_dh", mfE, 1, 10+40*3, dh, 3, 8+4);
+	MakeConnectingSegment("er_dh", mfE, 1, 10+40*2, dh, 3, 8+4);
 	SS_O2Generator *o2 = new SS_O2Generator("O2GENERATOR", SubmarineState.Get(), XCE, YE+20+40*4, 120, 24);
 	o2->MarkerX = TEXT("XCE");
 	o2->MarkerY = TEXT("YE");
 	CmdDistributor.RegisterHandler(o2);
-	MakeConnectingSegment("er_o2", mfE, 1, 10+40*4, o2, 3, 8+4);
+	MakeConnectingSegment("er_o2", mfE, 1, 10+40*3, o2, 3, 8+4);
 	SS_Electrolysis *elec = new SS_Electrolysis("ELECTROLYZER", SubmarineState.Get(), XCE, YE+20+40*5, 120, 24);
 	elec->MarkerX = TEXT("XCE");
 	elec->MarkerY = TEXT("YE");
 	CmdDistributor.RegisterHandler(elec);
-	MakeConnectingSegment("er_co2", mfE, 1, 10+40*5, elec, 3, 8+4);
+	MakeConnectingSegment("er_co2", mfE, 1, 10+40*4, elec, 3, 8+4);
 
 //
 
@@ -1338,6 +1339,12 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	CmdDistributor.RegisterHandler(fmbt);
 	MakeConnectingSegment("fmbt_feed", mfEu3, 1, 10, fmbt, 3, fmbt->H/2);
 
+	SS_Flask *fflask = new SS_Flask("FFLASK", SubmarineState.Get(), XCE, YE1 + 76-3);
+	fflask->MarkerX = TEXT("XCE");
+	fflask->MarkerY = TEXT("YE1");
+	CmdDistributor.RegisterHandler(fflask);
+	MakeConnectingSegment("fflask_feed", mfEu2, 1, 10, fflask, 3, fflask->H/2);
+
 	SS_TBT *ftbt = new SS_TBT("FTBT", SubmarineState.Get(), XCE, YE1 + 152-14);
 	ftbt->MarkerX = TEXT("XCE");
 	ftbt->MarkerY = TEXT("YE1");
@@ -1349,6 +1356,12 @@ void AVisualTestHarnessActor::InitializeCommandHandlers()
 	rtbt->MarkerY = TEXT("YE3");
 	CmdDistributor.RegisterHandler(rtbt);
 	MakeConnectingSegment("ftbt_feed", mfEu4, 1, 10, rtbt, 3, rtbt->H/2);
+
+	SS_Flask *rflask = new SS_Flask("RFLASK", SubmarineState.Get(), XCE, YE3 - 76+4);
+	rflask->MarkerX = TEXT("XCE");
+	rflask->MarkerY = TEXT("YE3");
+	CmdDistributor.RegisterHandler(rflask);
+	MakeConnectingSegment("rflask_feed", mfEu5, 1, 10, rflask, 3, rflask->H/2);
 
 	SS_MBT *rmbt = new SS_MBT("RMBT", SubmarineState.Get(), XCE, YE3-14);
 	rmbt->MarkerX = TEXT("XCE");

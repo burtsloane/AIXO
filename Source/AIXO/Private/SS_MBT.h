@@ -37,6 +37,18 @@ public:
 		else SubState->ForwardMBTLevel = val;
     }
 
+    virtual float GetFlaskLevel()
+    {
+    	if (SystemName == "RMBT") return SubState->Flask2Level;
+    	return SubState->Flask1Level;
+    }
+
+    virtual void SetFlaskLevel(float val)
+    {
+		if (SystemName == "RMBT") SubState->Flask2Level = val;
+		else SubState->Flask1Level = val;
+    }
+
     virtual void UpdateChange() {
     	PostHandleCommand();
     }
@@ -131,9 +143,9 @@ public:
 
     virtual bool TickFlask(float ScaledDeltaTime)
     {
-		SetLevel(GetLevel() - ScaledDeltaTime);
-    	if (GetLevel() < 0) {
-    		SetLevel(0.0f);
+		SetFlaskLevel(GetFlaskLevel() - ScaledDeltaTime);
+    	if (GetFlaskLevel() < 0) {
+    		SetFlaskLevel(0.0f);
     		return true;
     	}
     	return false;
@@ -205,6 +217,7 @@ public:
 
 	virtual void RenderBG(RenderingContext& Context) override
 	{
+//RenderUnderlay(Context); return;		// just draw the underlay line on top for viz
         FLinearColor tc = FLinearColor::Black;
         FLinearColor c = RenderBGGetColor();
         bool showwater = true;
@@ -216,16 +229,26 @@ public:
 			}
 		}
 		//
-		FBox2D r;
+		FBox2D r, r2;
 		{
 			r.Min.X = X - 80;
 			r.Min.Y = Y + H - 4;
 			r.Max.X = X;
 			r.Max.Y = r.Min.Y;
+			r2 = r;
+			r2.Min.Y = Y + H - 4 - 12;
+			r2.Max.Y = r2.Min.Y;
+			float d = 5 * GetLevel();
+			if (d > 1) d = 1;
+			if (d > 0) {
+				FBox2D rr = r;
+				rr.Min = r2.Min;
+				rr.Max = r.Max;
+				rr.Min.Y = rr.Max.Y - (rr.Max.Y - rr.Min.Y) * d; 
+				Context.DrawRectangle(rr, FLinearColor(0.85f, 0.85f, 1.0f), true);
+			}
 			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-			r.Min.Y = Y + H - 4 - 12;
-			r.Max.Y = r.Min.Y;
-			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
+			Context.DrawLine(r2.Min, r2.Max, FLinearColor::Black, 1);
 		}
 		//
 		r.Min.X = X;
@@ -233,7 +256,7 @@ public:
 		r.Max.X = X + W;
 		r.Max.Y = Y + H;
 		Context.DrawRectangle(r, c, true);
-		FBox2D r2 = r;
+		r2 = r;
 		r2.Min.Y += 60-60*GetLevel();
 		if (showwater) Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
 		Context.DrawRectangle(r, tc, false);
@@ -262,48 +285,37 @@ public:
 		Context.DrawText(Position, FString::Printf(TEXT("%d%%"), (int)(100*GetLevel())), tc);
 	}
 
-	virtual void RenderUnderline(RenderingContext& Context)
+	virtual void RenderUnderlay(RenderingContext& Context) override
 	{
-return;		// old
-		FBox2D r;
-		int32 dx = 150-75-16-3-13+1 + 16;
-		r.Min.X = X-dx - 120;
-		r.Min.Y = Y + H/2 - 30;
-		r.Max.X = X-dx;
-		r.Max.Y = Y + H/2 + 30;
-		FVector2D a, b;
-		a.X = r.Min.X + 75;
-		a.Y = r.Min.Y - 20;
-		b.X = r.Min.X + 75;
-		b.Y = r.Min.Y + H/2;
-
-		if (bIsBlowing)
+		int32 fH = 32;
+		int32 fW = W;
+		FVector2D f, f1, f2, t;
+		if (SystemName == "RMBT") {
+			f.X = X + W - 24;
+			f.Y = Y;
+		} else {
+			f.X = X + W - 24;
+			f.Y = Y + H + H/2 - 10;
+		}
+		t.X = f.X;
+		t.Y = f.Y + fH/2;
+		f2 = f;
+		f2.Y = f.Y - 30;
+		f1 = f;
+		f1.Y = f.Y + fH/2;
+		if (bIsBlowing || bIsEBlowing)
 		{
 			float d = 0.0f;
 			d += 0.25f*FMath::Sin(FPlatformTime::Seconds() * 8.0f);
 			if (d < 0) d = 0;
-			Context.DrawLine(a, b, FLinearColor(d, 1.0f, d), 12.0f);
+			Context.DrawLine(f1, t, FLinearColor(d, 1.0f, d), 12.0f);
+			Context.DrawLine(f2, t, FLinearColor(d, 1.0f, d), 12.0f);
 		}
 		else
 		{
-			Context.DrawLine(a, b, FLinearColor(0.6f, 1.0f, 0.6f), 6.0f);
+			Context.DrawLine(f1, t, FLinearColor(0.6f, 1.0f, 0.6f), 6.0f);
+			Context.DrawLine(f2, t, FLinearColor(0.6f, 1.0f, 0.6f), 6.0f);
 		}
-	}
-
-	virtual void RenderUnderlay(RenderingContext& Context) override
-	{
-return;		// old
-        FVector2D Position;
-        Position.X = X + W/2;
-        Position.Y = Y + H/2;
-		FVector2D Position2 = Position;
-		FVector2D Position3 = Position;
-		int32 dx = 150-75-16-3-13+1 + 16;
-		Position2.X = X-dx;        	Position2.Y -= 30;
-		Position3.X = X-dx;        	Position3.Y += 30;
-		Context.DrawTriangle(Position, Position2, Position3, FLinearColor(0.85f, 0.85f, 1.0f));
-		
-		RenderUnderline(Context);
 	}
 
 	void RenderLabels(RenderingContext& Context)
@@ -332,7 +344,7 @@ return;		// old
 		ICH_PowerJunction::InitializeVisualElements(); // Call base class if it does anything
 
 		// Toggle Button Implementation
-		FBox2D ToggleBounds(FVector2D(-40, 0), FVector2D(-2, 12)); 
+		FBox2D ToggleBounds(FVector2D(-42, 0), FVector2D(-4, 12)); 
 		VisualElements.Add(new VE_ToggleButton(this, 
 												 ToggleBounds,
 												 TEXT("OPEN"),      // Query Aspect

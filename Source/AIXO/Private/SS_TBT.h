@@ -39,6 +39,18 @@ public:
 		else SubState->ForwardTBTLevel = val;
     }
 
+    virtual float GetFlaskLevel()
+    {
+    	if (SystemName == "RTBT") return SubState->Flask2Level;
+    	return SubState->Flask1Level;
+    }
+
+    virtual void SetFlaskLevel(float val)
+    {
+		if (SystemName == "RTBT") SubState->Flask2Level = val;
+		else SubState->Flask1Level = val;
+    }
+
     virtual float GetDY()
     {
     	if (SystemName == "RTBT") return 0;
@@ -133,9 +145,9 @@ public:
 
     virtual bool TickFlask(float ScaledDeltaTime)
     {
-		SetLevel(GetLevel() - ScaledDeltaTime);
-    	if (GetLevel() < 0) {
-    		SetLevel(0.0f);
+		SetFlaskLevel(GetFlaskLevel() - ScaledDeltaTime);
+    	if (GetFlaskLevel() < 0) {
+    		SetFlaskLevel(0.0f);
     		return true;
     	}
     	return false;
@@ -161,7 +173,7 @@ public:
 		}
 
         if (bIsBlowing) {
-        	if (TickFlask(DeltaTime * 0.2f)) {
+        	if (TickFlask(DeltaTime * 0.04f)) {
                 HandleCommand("EBLOW", "SET", "false");
                 bIsBlowing = false;
                 AddToNotificationQueue(FString::Printf(TEXT("%s flask %s"), *GetSystemName(), TEXT("empty")));
@@ -174,9 +186,10 @@ public:
                 HandleCommand("EBLOW", "SET", "false");
                 bIsBlowing = false;
                 AddToNotificationQueue(FString::Printf(TEXT("%s tank %s"), *GetSystemName(), TEXT("empty")));
-                SetLevel(0.0f);
+                NewLevel = 0.0f;
 				PostHandleCommand();
             }
+            SetLevel(NewLevel);
         }
 
         float CurrentPumpRate = PumpPart->GetPumpRate();
@@ -213,18 +226,37 @@ public:
         }
     }
 
-//	const int32 DX = 150 + 16;
 	virtual void RenderUnderlay(RenderingContext& Context) override
 	{
-//return;		// old
-//        FVector2D Position;
-//        Position.X = X + H/2;
-//        Position.Y = Y + H/2;
-//		FVector2D Position2 = Position;
-//		FVector2D Position3 = Position;
-//		Position2.X = X-DX;        	Position2.Y -= 30 + GetDY();
-//		Position3.X = X-DX;        	Position3.Y += 30 - GetDY();
-//		Context.DrawTriangle(Position, Position2, Position3, FLinearColor(0.85f, 0.85f, 1.0f));
+		int32 fH = 32;
+		int32 fW = W;
+		FVector2D f, f1, f2, t;
+		if (SystemName == "RTBT") {
+			f.X = X + 25;
+			f.Y = Y + H + H/2 + 5;
+		} else {
+			f.X = X + 25;
+			f.Y = Y - 22;
+		}
+		t.X = f.X;
+		t.Y = f.Y + 2;
+		f2 = f;
+		f2.Y = f.Y - 10;
+		f1 = f;
+		f1.Y = f.Y + 2;
+		if (bIsBlowing)
+		{
+			float d = 0.0f;
+			d += 0.25f*FMath::Sin(FPlatformTime::Seconds() * 8.0f);
+			if (d < 0) d = 0;
+			Context.DrawLine(f1, t, FLinearColor(d, 1.0f, d), 12.0f);
+			Context.DrawLine(f2, t, FLinearColor(d, 1.0f, d), 12.0f);
+		}
+		else
+		{
+			Context.DrawLine(f1, t, FLinearColor(0.6f, 1.0f, 0.6f), 6.0f);
+			Context.DrawLine(f2, t, FLinearColor(0.6f, 1.0f, 0.6f), 6.0f);
+		}
     }
 
 	virtual void RenderPump(RenderingContext& Context, float x, float y, float rate, bool horiz)
@@ -278,6 +310,7 @@ public:
 
 	virtual void RenderBG(RenderingContext& Context) override
 	{
+//RenderUnderlay(Context); return;		// just draw the underlay line on top for viz
         FLinearColor tc = FLinearColor::Black;
         FLinearColor c = RenderBGGetColor();
         bool showwater = true;
@@ -289,63 +322,84 @@ public:
 			}
 		}
 		// render the little pump
-		FBox2D r;
+		FBox2D r, r2;
 		{
 			r.Min.X = X - 80;
 			r.Min.Y = Y + H - 4 - GetDY();
 			r.Max.X = X;
 			r.Max.Y = r.Min.Y;
+			r2 = r;
+			r2.Min.Y = Y + H - 4 - 12 - GetDY();
+			r2.Max.Y = r2.Min.Y;
+			float d = 5 * GetLevel();
+			if (d > 1) d = 1;
+			{
+				FBox2D rr = r;
+				rr.Min = r2.Min;
+				rr.Max = r.Max;
+				rr.Min.Y = rr.Max.Y - (rr.Max.Y - rr.Min.Y) * d; 
+				Context.DrawRectangle(rr, FLinearColor(0.85f, 0.85f, 1.0f), true);
+				rr.Min = r2.Min;
+				rr.Max.X = X - 35;
+				Context.DrawRectangle(rr, FLinearColor(0.85f, 0.85f, 1.0f), true);
+			}
 			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-			r.Min.Y = Y + H - 4 - 12 - GetDY();
-			r.Max.Y = r.Min.Y;
-			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-
+			Context.DrawLine(r2.Min, r2.Max, FLinearColor::Black, 1);
 			RenderPump(Context, X - 40, Y + H - 15 - GetDY(), PumpPart->GetPumpRate(), true);
 
-			float basey;
+			float basey, basey2;
 			if (SystemName=="FTBT") {
-				basey = Y + 5 - 26 - GetDY();
-				r.Min.X = X - 80;
-				r.Min.Y = basey + 11;
-				r.Max.X = X + 15;
-				r.Max.Y = r.Min.Y;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				r.Min.Y = basey - 1;
-				r.Max.Y = r.Min.Y;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				//
-				r.Min.X = X + 20 - 1;
-				r.Min.Y = basey;
-				r.Max.X = r.Min.X;
-				r.Max.Y = Y + 1;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				r.Min.X += 12;
-				r.Max.X = r.Min.X;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				//
-				RenderPump(Context, X + 20, basey, bIsBlowing?-1:0, true);
+				basey = Y + 2 - 24 - GetDY();
 			} else {
-				basey = Y + H + 5 + 6 - GetDY();
-				r.Min.X = X - 80;
-				r.Min.Y = basey + 11;
-				r.Max.X = X + 15;
-				r.Max.Y = r.Min.Y;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				r.Min.Y = basey - 1;
-				r.Max.Y = r.Min.Y;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				//
-				r.Min.X = X + 20 - 1;
-				r.Min.Y = basey;
-				r.Max.X = r.Min.X;
-				r.Max.Y = Y + H - 1;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				r.Min.X += 12;
-				r.Max.X = r.Min.X;
-				Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
-				//
-				RenderPump(Context, X + 20, basey, bIsBlowing?-1:0, true);
+				basey = Y + H + 12 - GetDY();
 			}
+			basey2 = basey + 15;
+			r.Min.X = X - 80;
+			r.Min.Y = basey + 11;
+			r.Max.X = X + 15;
+			r.Max.Y = r.Min.Y;
+			r2 = r;
+			r2.Min.Y = basey - 1;
+			r2.Max.Y = r2.Min.Y;
+			d = 5 * GetLevel();
+			if (d > 1) d = 1;
+			{
+				FBox2D rr = r;
+				rr.Min = r2.Min;
+				rr.Max = r.Max;
+				rr.Min.Y = rr.Max.Y - (rr.Max.Y - rr.Min.Y); 
+				Context.DrawRectangle(rr, FLinearColor(0.85f, 0.85f, 1.0f), true);
+			}
+			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
+			Context.DrawLine(r2.Min, r2.Max, FLinearColor::Black, 1);
+			//
+			r.Min.X = X + 20 - 1;
+			r.Min.Y = basey;
+			r.Max.X = r.Min.X;
+			r.Max.Y = basey + 8;
+			if (SystemName=="FTBT") {
+				r.Min.Y += 14;
+				r.Max.Y += 14;
+			} else {
+				r.Min.Y += -13;
+				r.Max.Y += -13;
+			}
+			r2 = r;
+			r2.Min.X += 12;
+			r2.Max.X = r2.Min.X;
+			{
+				FBox2D rr = r;
+				rr.Min.X = r.Min.X;
+				rr.Min.Y = r2.Min.Y;
+				rr.Max.X = r2.Max.X;
+				rr.Max.Y = r.Max.Y;
+				rr.Min.Y = rr.Max.Y - (rr.Max.Y - rr.Min.Y) * d; 
+				Context.DrawRectangle(rr, FLinearColor(0.85f, 0.85f, 1.0f), true);
+			}
+			Context.DrawLine(r.Min, r.Max, FLinearColor::Black, 1);
+			Context.DrawLine(r2.Min, r2.Max, FLinearColor::Black, 1);
+			//
+			RenderPump(Context, X + 20, basey, bIsBlowing?-1:0, true);
 		}
 		//
 		r.Min.X = X;
@@ -353,7 +407,7 @@ public:
 		r.Max.X = X + W;
 		r.Max.Y = Y + H - GetDY();
 		Context.DrawRectangle(r, c, true);
-		FBox2D r2 = r;
+		r2 = r;
 		r2.Min.Y += 60-60*GetLevel();
 		if (showwater) Context.DrawRectangle(r2, FLinearColor(0.85f, 0.85f, 1.0f), true);
 		Context.DrawRectangle(r, tc, false);
@@ -412,9 +466,9 @@ public:
 												 ));
 		FBox2D ToggleBounds4;
 		if (SystemName == "RTBT") {
-			ToggleBounds4 = FBox2D(FVector2D(45, H + 18 - GetDY() - 12), FVector2D(45+12, H + 18 - GetDY())); 
+			ToggleBounds4 = FBox2D(FVector2D(45, H + 18 - GetDY() - 12 + 4), FVector2D(45+12, H + 18 - GetDY() + 4)); 
 		} else {
-			ToggleBounds4 = FBox2D(FVector2D(45, 14-20 - GetDY() - 12), FVector2D(45+14, 12-20 - GetDY())); 
+			ToggleBounds4 = FBox2D(FVector2D(45, 14-20 - GetDY() - 12 - 4), FVector2D(45+14, 12-20 - GetDY() - 4)); 
 		}
 		VisualElements.Add(new VE_MomentaryButton(this, 
 												 ToggleBounds4,

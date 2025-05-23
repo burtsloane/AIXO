@@ -359,14 +359,14 @@
 			"Position":
 			{
 				"X": 30,
-				"Y": -52,
+				"Y": -12,
 				"mX": "XC",
 				"mY": "Y3"
 			},
 			"Size":
 			{
 				"W": 20,
-				"H": 220
+				"H": 180
 			},
 			"Status": "NORMAL",
 			"InitialCommands": [
@@ -378,8 +378,7 @@
 				"POWERPORT_5 ENABLE",
 				"POWERPORT_6 ENABLE",
 				"POWERPORT_7 ENABLE",
-				"POWERPORT_8 ENABLE",
-				"POWERPORT_9 ENABLE"
+				"POWERPORT_8 ENABLE"
 			]
 		},
 		{
@@ -409,7 +408,7 @@
 			"Position":
 			{
 				"X": 30,
-				"Y": 174,
+				"Y": 171,
 				"mX": "XC",
 				"mY": "YE1"
 			},
@@ -421,7 +420,8 @@
 			"Status": "NORMAL",
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
-				"POWERPORT_1 ENABLE"
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -474,7 +474,7 @@
 			"Position":
 			{
 				"X": 30,
-				"Y": 801,
+				"Y": 805,
 				"mX": "XC",
 				"mY": "YE3"
 			},
@@ -486,7 +486,8 @@
 			"Status": "NORMAL",
 			"InitialCommands": [
 				"POWERPORT_0 ENABLE",
-				"POWERPORT_1 ENABLE"
+				"POWERPORT_1 ENABLE",
+				"POWERPORT_2 ENABLE"
 			]
 		},
 		{
@@ -516,7 +517,7 @@
 			"Position":
 			{
 				"X": 0,
-				"Y": 20,
+				"Y": 60,
 				"mX": "XCE",
 				"mY": "YE"
 			},
@@ -537,34 +538,13 @@
 			"Position":
 			{
 				"X": 0,
-				"Y": 60,
-				"mX": "XCE",
-				"mY": "YE"
-			},
-			"Size":
-			{
-				"W": 120,
-				"H": 24
-			},
-			"Status": "NORMAL",
-			"InitialCommands": [
-				"ON SET false",
-				"POWERSELECT SET 0"
-			]
-		},
-		{
-			"Name": "AIRCOMPRESSOR",
-			"Type": "SS_AirCompressor",
-			"Position":
-			{
-				"X": -30,
 				"Y": 100,
 				"mX": "XCE",
 				"mY": "YE"
 			},
 			"Size":
 			{
-				"W": 150,
+				"W": 120,
 				"H": 24
 			},
 			"Status": "NORMAL",
@@ -1220,6 +1200,27 @@
 			]
 		},
 		{
+			"Name": "FFLASK",
+			"Type": "SS_Flask",
+			"Position":
+			{
+				"X": 0,
+				"Y": 165,
+				"mX": "XCE",
+				"mY": "YE1"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
+			]
+		},
+		{
 			"Name": "FTBT",
 			"Type": "SS_TBT",
 			"Position":
@@ -1261,6 +1262,27 @@
 				"EBLOW SET false",
 				"POWERSELECT SET 0",
 				"PUMPRATE SET 0.00"
+			]
+		},
+		{
+			"Name": "RFLASK",
+			"Type": "SS_Flask",
+			"Position":
+			{
+				"X": 0,
+				"Y": 799,
+				"mX": "XCE",
+				"mY": "YE3"
+			},
+			"Size":
+			{
+				"W": 120,
+				"H": 32
+			},
+			"Status": "NORMAL",
+			"InitialCommands": [
+				"ON SET false",
+				"POWERSELECT SET 0"
 			]
 		},
 		{
@@ -1536,7 +1558,7 @@
 			"JunctionB": "L3",
 			"PortB": 4,
 			"SideA": 3,
-			"OffsetA": 112,
+			"OffsetA": 72,
 			"SideB": 1,
 			"OffsetB": 60
 		},
@@ -1548,7 +1570,7 @@
 			"JunctionB": "R3",
 			"PortB": 4,
 			"SideA": 3,
-			"OffsetA": 157,
+			"OffsetA": 117,
 			"SideB": 1,
 			"OffsetB": 105
 		},
@@ -1649,9 +1671,9 @@
 			"OffsetB": 50
 		},
 		{
-			"Name": "er_ac",
+			"Name": "er_dh",
 			"Status": "NORMAL",
-			"JunctionA": "AIRCOMPRESSOR",
+			"JunctionA": "DEHUMIDIFIER",
 			"PortA": 0,
 			"JunctionB": "ER",
 			"PortB": 6,
@@ -1661,9 +1683,9 @@
 			"OffsetB": 90
 		},
 		{
-			"Name": "er_dh",
+			"Name": "er_o2",
 			"Status": "NORMAL",
-			"JunctionA": "DEHUMIDIFIER",
+			"JunctionA": "O2GENERATOR",
 			"PortA": 0,
 			"JunctionB": "ER",
 			"PortB": 7,
@@ -1673,9 +1695,9 @@
 			"OffsetB": 130
 		},
 		{
-			"Name": "er_o2",
+			"Name": "er_co2",
 			"Status": "NORMAL",
-			"JunctionA": "O2GENERATOR",
+			"JunctionA": "ELECTROLYZER",
 			"PortA": 0,
 			"JunctionB": "ER",
 			"PortB": 8,
@@ -1683,18 +1705,6 @@
 			"OffsetA": 12,
 			"SideB": 1,
 			"OffsetB": 170
-		},
-		{
-			"Name": "er_co2",
-			"Status": "NORMAL",
-			"JunctionA": "ELECTROLYZER",
-			"PortA": 0,
-			"JunctionB": "ER",
-			"PortB": 9,
-			"SideA": 3,
-			"OffsetA": 12,
-			"SideB": 1,
-			"OffsetB": 210
 		},
 		{
 			"Name": "l4",
@@ -2093,6 +2103,18 @@
 			"OffsetB": 10
 		},
 		{
+			"Name": "fflask_feed",
+			"Status": "NORMAL",
+			"JunctionA": "FFLASK",
+			"PortA": 0,
+			"JunctionB": "E2",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 16,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
 			"Name": "ftbt_feed",
 			"Status": "NORMAL",
 			"JunctionA": "FTBT",
@@ -2113,6 +2135,18 @@
 			"PortB": 2,
 			"SideA": 3,
 			"OffsetA": 30,
+			"SideB": 1,
+			"OffsetB": 10
+		},
+		{
+			"Name": "rflask_feed",
+			"Status": "NORMAL",
+			"JunctionA": "RFLASK",
+			"PortA": 0,
+			"JunctionB": "E5",
+			"PortB": 2,
+			"SideA": 3,
+			"OffsetA": 16,
 			"SideB": 1,
 			"OffsetB": 10
 		},
