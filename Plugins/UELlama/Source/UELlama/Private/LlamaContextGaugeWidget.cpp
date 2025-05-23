@@ -62,18 +62,18 @@ void ULlamaContextGaugeWidget::NativeConstruct()
 void ULlamaContextGaugeWidget::NativeDestruct()
 {
     // Unbind from the delegate when the widget is destroyed
-	if (TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound()) {
-		TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
-	}
+    if (TargetLlamaComponent->OnContextChanged.IsBound()) {
+        TargetLlamaComponent->OnContextChanged.RemoveDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
+    }
     Super::NativeDestruct();
 }
 
 void ULlamaContextGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaComponent)
 {
     // Unbind from old component, if any
-    if (TargetLlamaComponent && TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound())
+    if (TargetLlamaComponent && TargetLlamaComponent->OnContextChanged.IsBound())
     {
-        TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
+        TargetLlamaComponent->OnContextChanged.RemoveDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
     }
 
     TargetLlamaComponent = InLlamaComponent;
@@ -81,7 +81,7 @@ void ULlamaContextGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaCompone
     // Bind to new component's delegate
     if (TargetLlamaComponent)
     {
-        TargetLlamaComponent->OnLlamaContextChangedDelegate.AddDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
+        TargetLlamaComponent->OnContextChanged.AddDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
         UE_LOG(LogTemp, Log, TEXT("LlamaContextGaugeWidget: Bound to LlamaComponent %s"), *TargetLlamaComponent->GetName());
 
         // Optional: Request an initial update if the LlamaComponent supports it

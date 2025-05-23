@@ -1,6 +1,20 @@
 // LLamaComponent.h
 #pragma once
 
+// ./llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 --n-predict 2048 --ctx-size 4096 --streaming
+//The key parameters are:
+//-m: Path to your model file
+//--host: Set to 0.0.0.0 to accept connections from other machines
+//--port: Port to listen on (default is 8080)
+//--n-predict: Maximum tokens to generate
+//--ctx-size: Context window size
+//--streaming: Enable streaming responses
+//To use this with our remote provider:
+//Start the server on your GPU machine
+//In the Unreal Editor:
+//Set bUseLocalLlama = false on your LlamaComponent
+//Set the RemoteEndpoint to http://your.gpu.machine.ip:8080/completion
+
 #include <Components/ActorComponent.h>
 #include <CoreMinimal.h>
 #include <memory>
@@ -10,10 +24,14 @@
 #include <functional>
 #include <mutex>
 #include "llama.h"
-#include "ICommandHandler.h"
 //#include "VisualTestHarnessActor.h"
 
 #include "ContextVisualizationData.h"
+#include "LLMProvider.h"
+#include "ILLMVisualizationInterface.h"
+
+// Add forward declaration for AIXO's ICommandHandler
+namespace AIXO { class ICommandHandler; }
 
 #include "LlamaComponent.generated.h"
 
@@ -193,13 +211,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnToolCallDetected, const FString&,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaErrorOccurred, const FString&, ErrorMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaLoadingProgressDelegate, float, Progress);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaReady, const FString&, ReadyMessage);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaContextChangedDelegate, const FContextVisPayload&, ContextMessage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnContextChanged, const FContextVisPayload&, Payload);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTokenGenerated, const FString&, Token);
 
 
 UCLASS(Category = "LLM", BlueprintType, meta = (BlueprintSpawnableComponent))
 class UELLAMA_API ULlamaComponent : public UActorComponent
 {
     GENERATED_BODY()
+
 public:
     ULlamaComponent(const FObjectInitializer& ObjectInitializer);
     ~ULlamaComponent();
@@ -233,7 +253,10 @@ public:
     FOnLlamaReady OnLlamaReady;
 
     UPROPERTY(BlueprintAssignable, Category = "Llama")
-    FOnLlamaContextChangedDelegate OnLlamaContextChangedDelegate;
+    FOnContextChanged OnContextChanged;
+
+    UPROPERTY(BlueprintAssignable, Category = "Llama")
+    FOnTokenGenerated OnTokenGenerated;
 
 	//
 
@@ -247,10 +270,76 @@ public:
     void UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent);
 
     UFUNCTION(BlueprintCallable, Category = "Llama")
-    void ProcessInput(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
+    void ProcessInput(const FString& InputText, const FString& HighFrequencyContextText = TEXT(""), const FString& InputTypeHint = TEXT(""));
 
     UFUNCTION(BlueprintCallable, Category = "Llama|Debug")
     void TriggerFullContextDump();
+
+    // Provider selection
+    UPROPERTY(EditAnywhere, Category = "LLM")
+    bool bUseLocalLlama = true;
+    
+    UPROPERTY(EditAnywhere, Category = "LLM", meta = (EditCondition = "bUseLocalLlama"))
+    FString LocalModelPath;
+    
+    UPROPERTY(EditAnywhere, Category = "LLM", meta = (EditCondition = "!bUseLocalLlama"))
+    FString RemoteEndpoint;
+    
+    UPROPERTY(EditAnywhere, Category = "LLM", meta = (EditCondition = "!bUseLocalLlama"))
+    FString APIKey;
+
+    // Set the visualization interface
+    UFUNCTION(BlueprintCallable, Category = "LLM|Visualization")
+    void SetVisualizationInterface(TScriptInterface<ILLMVisualizationInterface> InVisualizationInterface);
+
+protected:
+    // Provider management
+    void InitializeProvider();
+    void SwitchProvider(bool bUseLocal);
+    
+    // Provider instance
+    UPROPERTY()
+    TScriptInterface<ILLMProvider> Provider;
+    
+    // Context management
+    UPROPERTY()
+    ULLMContextManager* ContextManager;
+    
+    // Visualization
+    void UpdateContextVisualization();
+    void HandleContextChanged(const FContextVisPayload& Payload);
+    
+    // Token handling
+    void HandleTokenGenerated(const FString& Token);
+    
+    // Provider switching
+    UFUNCTION(BlueprintCallable, Category = "LLM")
+    void ToggleProvider();
+    
+    UFUNCTION(BlueprintCallable, Category = "LLM")
+    void SetProvider(bool bUseLocal);
+    
+    // Context updates
+    UFUNCTION(BlueprintCallable, Category = "LLM")
+    void UpdateSystemPrompt(const FString& NewPrompt);
+    
+    UFUNCTION(BlueprintCallable, Category = "LLM")
+    void UpdateStaticWorldInfo(const FString& NewInfo);
+    
+    UFUNCTION(BlueprintCallable, Category = "LLM")
+    void UpdateLowFrequencyState(const FString& NewState);
+    
+    // Visualization
+    UPROPERTY(BlueprintReadOnly, Category = "LLM")
+    FContextVisPayload CurrentVisualization;
+    
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnVisualizationUpdated, const FContextVisPayload&, Payload);
+    UPROPERTY(BlueprintAssignable, Category = "LLM")
+    FOnVisualizationUpdated OnVisualizationUpdated;
+
+    // The visualization interface
+    UPROPERTY()
+    TScriptInterface<ILLMVisualizationInterface> VisualizationInterface;
 
 private:
 	void HandleToolCall_GetSystemInfo(const FString& QueryString);
@@ -258,7 +347,7 @@ private:
 	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
 	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
 	std::string MakeHFSString();
-	FString MakeCommandHandlerString(ICommandHandler *ich);
+	FString MakeCommandHandlerString(const FString& SystemName);
 
 private:
     std::unique_ptr<Internal::Llama> LlamaInternal; // Renamed from llama
