@@ -2,23 +2,24 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
-#include "ILlamaProvider.h"
-#include "LocalLlamaProvider.generated.h"
+#include "ILlamaCore.h"
+#include "LlamaTypes.h"
+#include "LlamaCore.generated.h"
 
 namespace Internal {
     class LlamaInternal;
 }
 
 UCLASS()
-class UELlama_API ULocalLlamaProvider : public UObject, public ILlamaProvider
+class UELLAMA_API ULlamaCore : public UObject, public ILlamaCoreInterface
 {
     GENERATED_BODY()
 
 public:
-    ULocalLlamaProvider();
-    virtual ~ULocalLlamaProvider();
+    ULlamaCore();
+    virtual ~ULlamaCore();
 
-    // ILlamaProvider implementation
+    // ILlamaCoreInterface implementation
     virtual void Initialize(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq) override;
     virtual void Shutdown() override;
     virtual void ProcessInput(const FString& InputText, const FString& HighFrequencyContextText = TEXT(""), const FString& InputTypeHint = TEXT("")) override;
@@ -34,5 +35,5 @@ public:
     virtual void SetIsGeneratingCallback(std::function<void(bool)> Callback) override;
 
 private:
-    Internal::LlamaInternal* LlamaInternal;  // Updated from Llama to LlamaInternal
+    std::unique_ptr<Internal::LlamaInternal> LlamaInternal;
 }; 

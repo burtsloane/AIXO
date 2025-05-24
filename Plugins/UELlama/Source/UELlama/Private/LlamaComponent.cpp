@@ -59,7 +59,12 @@
 namespace Internal
 {
     // --- Llama Constructor/Destructor ---
-    Llama::Llama() : ThreadHandle([this]() { ThreadRun_LlamaThread(); }) {}
+    Llama::Llama() : ThreadHandle([this]() { 
+        UE_LOG(LogTemp, Log, TEXT("Llama::Constructor - Creating Llama thread"));
+        ThreadRun_LlamaThread(); 
+    }) {
+        UE_LOG(LogTemp, Log, TEXT("Llama::Constructor - Thread created"));
+    }
 
     Llama::~Llama()
     {
@@ -101,7 +106,7 @@ namespace Internal
     // --- Llama Thread Initialization ---
     void Llama::InitializeLlama_LlamaThread(const FString& ModelPathFStr, const FString& InitialSystemPromptFStr, const FString& Systems, const FString& LowFreq /*, other params */)
     {
-        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Initializing Llama... Model: %s"), *ModelPathFStr);
+        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Starting initialization... Model: %s"), *ModelPathFStr);
         if (model) { // Already initialized
             UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Already initialized."));
             return;
@@ -110,6 +115,7 @@ namespace Internal
         llama_model_params model_params = llama_model_default_params();
         // model_params.n_gpu_layers = 50; // Configure as needed
 
+        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Loading model from file..."));
         model = llama_model_load_from_file(TCHAR_TO_UTF8(*ModelPathFStr), model_params);
         if (!model) {
             FString ErrorMsg = FString::Printf(TEXT("LlamaThread: Unable to load model from %s"), *ModelPathFStr);
@@ -117,6 +123,7 @@ namespace Internal
             qLlamaToMain.enqueue([this, ErrorMsg]() { if (errorCb) errorCb(ErrorMsg); });
             return;
         }
+        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Model loaded successfully"));
         vocab = llama_model_get_vocab(model);
         n_ctx_from_model = llama_model_n_ctx_train(model); // Or llama_n_ctx if using that for actual context size
 
@@ -290,6 +297,7 @@ MirroredKvCacheTokens.clear();
 		// --- End of Pre-decoding ---
 
 		// Signal main thread that AIXO is now ready (or after pre-decode)
+		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Initialization complete, signaling ready"));
 		FString msg = "Ready";
 		qLlamaToMain.enqueue([this, msg]() { if (readyCb) readyCb(msg); });
 
@@ -1401,137 +1409,74 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		const FString& HighFrequencyContextTextFStr, // Raw HFS text
 		const FString& InputTypeHintFStr          // "user", "tool" (for formatting the InputTextFStr)
 	) {
-//        LlamaLogContext("ProcessInputAndGenerate_LlamaThread top");
+		UE_LOG(LogTemp, Log, TEXT("LlamaThread: BEGIN ProcessInput: '%s', HFS: '%s', Hint: '%s'"), 
+			*InputTextFStr, *HighFrequencyContextTextFStr, *InputTypeHintFStr);
 
-		// --- 0. Initial Checks & Generation Lock ---
 		if (!ctx || !model) {
 			UE_LOG(LogTemp, Error, TEXT("LlamaThread: ProcessInput called but Llama not ready."));
 			FString ErrorMsg = TEXT("Llama model or context not initialized.");
 			qLlamaToMain.enqueue([this, ErrorMsg]() { if (errorCb) errorCb(ErrorMsg); });
-			FString fs = "AIXO is currently thinking.\nPlease try again shortly.\n\n";
-			qLlamaToMain.enqueue([this, fs]() mutable { if (tokenCb) tokenCb(MoveTemp(fs)); });
 			return;
 		}
 
 		if (bIsGenerating.load(std::memory_order_acquire)) {
 			UE_LOG(LogTemp, Warning, TEXT("LlamaThread: ProcessInput called while already generating. Input '%s' ignored."), *InputTextFStr);
-			// Optionally, queue this input or inform the user. For now, ignoring.
 			FString fs = "AIXO is currently generating.\nPlease try again shortly.\n\n";
 			qLlamaToMain.enqueue([this, fs]() mutable { if (tokenCb) tokenCb(MoveTemp(fs)); });
 			return;
 		}
-		bIsGenerating = true; // Acquire "generation lock" for this entire operation
+
+		// Set generating flag
+		bIsGenerating = true;
 		qLlamaToMain.enqueue([this]() { if (setIsGeneratingCb) setIsGeneratingCb(true); });
-		// This flag will be reset at the very end of this function, or in DecodeTokensAndSample if it errors early.
 
-		UE_LOG(LogTemp, Log, TEXT("LlamaThread: BEGIN ProcessInput: '%s', HFS: '%s', Hint: '%s'"), *InputTextFStr, *HighFrequencyContextTextFStr, *InputTypeHintFStr);
-
-		// --- 1. Tokenize new High-Frequency State and New User/Tool Input ---
-		std::string hfs_std = TCHAR_TO_UTF8(*HighFrequencyContextTextFStr);
-		std::vector<llama_token> NewHFS_Tokens = my_llama_tokenize(model, hfs_std, false, false);
-		CurrentHighFrequencyStateTokens = NewHFS_Tokens; // Store for AssembleFullPromptForTurn
-
-		qLlamaToMain.enqueue([this, InputTextFStr]() mutable { 
-//			if (tokenCb) tokenCb("\n"+MoveTemp(InputTextFStr));
-			if (tokenCb) {
-				tokenCb(TEXT("\n"));
-				tokenCb(InputTextFStr);
-				tokenCb(TEXT("\n"));
-			}
-		});
-
-		std::string input_content_std = TCHAR_TO_UTF8(*InputTextFStr); // This is the *content* of the input
-//        input_content_std += "<|im_end|>\n";		// ??? this token was just missing
-		std::vector<llama_token> NewInput_Content_Tokens = my_llama_tokenize(model, input_content_std, false, 
-			InputTypeHintFStr.Equals(TEXT("tool"), ESearchCase::IgnoreCase) || InputTextFStr.Contains(TEXT("<")) // Allow special if tool or contains tags
-		);
-
-		// --- 2. Update Structured Conversation History with the new input ---
-		// This function will also rebuild the flat `ConversationHistoryTokens` array,
-		// ensuring it includes all necessary chat template role markers for each turn.
-		AppendTurnToStructuredHistory(InputTypeHintFStr, NewInput_Content_Tokens);
-
-		// --- 3. Prune Structured Conversation History if needed ---
-		// If pruning occurs, PruneConversationHistory internally calls InvalidateKVCacheFromPosition(LengthOfFixedBlocks),
-		// which correctly resets kv_cache_token_cursor to LengthOfFixedBlocks.
-		// If no pruning occurs, kv_cache_token_cursor remains at its value from the end of the last AI generation.
-		PruneConversationHistory();
-
-		// --- 4. Adjust kv_cache_token_cursor if it's "ahead" of the current fixed+conversation history ---
-		// This handles the case where the previous turn's HFS might have made the old kv_cache_token_cursor
-		// longer than the current sum of fixed blocks + full conversation history.
-		int32_t StablePrefixLength = 0;
-		for (uint8 i = 0; i < (uint8)ELlamaContextBlockType::COUNT; ++i) {
-			if (const FTokenizedContextBlock* Block = FixedContextBlocks.Find((ELlamaContextBlockType)i)) {
-				StablePrefixLength += Block->Tokens.size();
-			}
-		}
-		StablePrefixLength += ConversationHistoryTokens.size(); // ConversationHistoryTokens now includes the latest input with its role tags
-
-		if (kv_cache_token_cursor > StablePrefixLength) {
-			UE_LOG(LogTemp, Warning, TEXT("LlamaThread: KV cursor (%d) was beyond current fixed+convo length (%d). Adjusting."),
-				kv_cache_token_cursor, StablePrefixLength);
-			InvalidateKVCacheFromPosition(StablePrefixLength); // This sets kv_cache_token_cursor = StablePrefixLength
+		// 1. Update High Frequency State if provided
+		if (!HighFrequencyContextTextFStr.IsEmpty()) {
+			std::string hfs_prefix_str = "<|im_start|>system\n[Submarine Status:]\n";
+			std::string hfs_suffix_str = "\n<|im_end|>\n";
+			std::string hfs_content = TCHAR_TO_UTF8(*HighFrequencyContextTextFStr);
+			std::string full_hfs = hfs_prefix_str + hfs_content + hfs_suffix_str;
+			CurrentHighFrequencyStateTokens = my_llama_tokenize(model, full_hfs, false, true);
 		}
 
-//        LlamaLogContext("ProcessInputAndGenerate_LlamaThread cut back");
+		// 2. Tokenize and add the input to conversation history
+		std::string role_prefix = "<|im_start|>" + std::string(TCHAR_TO_UTF8(*InputTypeHintFStr)) + "\n";
+		std::string role_suffix = "<|im_end|>\n";
+		std::string input_content = TCHAR_TO_UTF8(*InputTextFStr);
+		std::string full_input = role_prefix + input_content + role_suffix;
+		std::vector<llama_token> input_tokens = my_llama_tokenize(model, full_input, false, true);
+		AppendTurnToStructuredHistory(InputTypeHintFStr, input_tokens);
 
-		// Now, kv_cache_token_cursor accurately reflects the end of the portion of the upcoming
-		// prompt that consists of (Fixed Blocks + Full Formatted Conversation History).
-		// The HFS, Focus Instruction, and AI Prefix will be new tokens to decode.
+		// 3. Assemble the full prompt for this turn
+		std::vector<llama_token> full_prompt_tokens;
+		AssembleFullPromptForTurn(InputTextFStr, InputTypeHintFStr, full_prompt_tokens);
 
-		// --- 5. Assemble the full prompt for this turn's generation ---
-		std::vector<llama_token> FullPromptForTurn;
-		AssembleFullPromptForTurn(
-			InputTextFStr, // Pass the original FString of the current input for the focus instruction
-			InputTypeHintFStr, // To know if focus instruction is needed
-			FullPromptForTurn  // Output parameter
-		);
+		// 4. Decode and generate
+		DecodeTokensAndSample(full_prompt_tokens, true);
 
-		// --- 6. Decode the prompt suffix and generate AI response ---
-		// DecodeTokensAndSample will use kv_cache_token_cursor to know where to start decoding
-		// from FullPromptForTurn and will advance kv_cache_token_cursor as it processes.
-		// It will also set bIsGenerating = false internally when done or on error.
-		DecodeTokensAndSample(FullPromptForTurn, true /* Logits for last token of prompt */);
-
-		// --- 7. Reset bIsGenerating after all operations for this input are complete ---
-		// DecodeTokensAndSample should set bIsGenerating = false upon its completion or error.
-		// This is a final check.
-		bIsGenerating = false; 
+		// Clear generating flag
+		bIsGenerating = false;
 		qLlamaToMain.enqueue([this]() { if (setIsGeneratingCb) setIsGeneratingCb(false); });
 
-		BroadcastContextVisualUpdate_LlamaThread();
-//        LlamaLogContext("ProcessInputAndGenerate_LlamaThread finished");
-
-		UE_LOG(LogTemp, Log, TEXT("LlamaThread: END ProcessInput: '%s'. kv_cache_token_cursor at %d"), *InputTextFStr, kv_cache_token_cursor);
+		UE_LOG(LogTemp, Log, TEXT("LlamaThread: END ProcessInput: '%s'. kv_cache_token_cursor at %d"), 
+			*InputTextFStr, kv_cache_token_cursor);
 	}
 
     // --- Main Llama Thread Loop ---
     void Llama::ThreadRun_LlamaThread()
     {
-        // Initial wait for InitializeLlama_LlamaThread to be called
-        while (bIsRunning && (!model || !ctx)) {
-            qMainToLlama.processQ(); // Process init command
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-
-        UE_LOG(LogTemp, Log, TEXT("LlamaThread %p: Starting main loop."), this);
-
+        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Starting thread run loop"));
         while (bIsRunning)
         {
-            // Process any pending commands from the main thread
-            // This is where UpdateContextBlock, ProcessInputAndGenerate_LlamaThread, etc., are actually invoked.
-            qMainToLlama.processQ();
-
-            // If not actively generating, sleep a bit to yield CPU
-            if (!bIsGenerating.load(std::memory_order_acquire)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // Process any pending tasks from the main thread
+            if (qMainToLlama.processQ()) {
+                continue; // Keep processing if there are more items
             }
-            // The actual generation logic is now part of DecodeTokensAndSample,
-            // which is called by ProcessInputAndGenerate_LlamaThread.
+
+            // If no tasks, sleep briefly to avoid busy-waiting
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        UE_LOG(LogTemp, Log, TEXT("LlamaThread %p: Exiting main loop."), this);
-        ShutdownLlama_LlamaThread(); // Clean up llama resources
+        UE_LOG(LogTemp, Log, TEXT("LlamaThread: Thread run loop ending"));
     }
 
 
@@ -1547,119 +1492,137 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
+    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::Constructor - Component created in Blueprint"));
     PrimaryComponentTick.bCanEverTick = true;
-    PrimaryComponentTick.bStartWithTickEnabled = true;
-    HarnessActor = nullptr;
-    LlamaInternal = std::make_unique<Internal::Llama>();
-
-    // Setup delegates to marshal callbacks from LlamaInternal to ULlamaComponent's Blueprint delegates
-    LlamaInternal->tokenCb = [this](FString NewToken) {
-        { // Ensure BP delegate is called on game thread
-            OnNewTokenGenerated.Broadcast(NewToken);
-        }
-    };
-    LlamaInternal->fullContextDumpCb = [this](FString ContextDump) {
-        {
-            OnFullContextDumpReady.Broadcast(ContextDump);
-        }
-    };
-	// In ULlamaComponent constructor, where toolCallCb is set up:
-	LlamaInternal->toolCallCb = [this](FString ToolCallJsonRaw) {
-		{
-			UE_LOG(LogTemp, Log, TEXT("MainThread: Received ToolCall: %s"), *ToolCallJsonRaw);
-			// Parse ToolCallJsonRaw to get tool name and arguments
-			TSharedPtr<FJsonObject> JsonObject;
-			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ToolCallJsonRaw);
-			if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid()) {
-				FString ToolName;
-				if (JsonObject->TryGetStringField(TEXT("name"), ToolName)) {
-					if (ToolName.Equals(TEXT("get_system_info"))) {
-						FString QueryString;
-						const TSharedPtr<FJsonObject>* ArgsObject;
-						if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
-							(*ArgsObject)->TryGetStringField(TEXT("system_name"), QueryString)) {
-							HandleToolCall_GetSystemInfo(QueryString);
-						} else {
-							SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'system_name' in arguments.\"}"));
-						}
-					}
-					else if (ToolName.Equals(TEXT("execute_submarine_command"))) {
-						FString QueryString;
-						const TSharedPtr<FJsonObject>* ArgsObject;
-						if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
-							(*ArgsObject)->TryGetStringField(TEXT("command_string"), QueryString)) {
-							HandleToolCall_CommandSubmarineSystem(QueryString);
-						} else {
-							SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'command_string' in arguments.\"}"));
-						}
-					}
-					else if (ToolName.Equals(TEXT("query_submarine_system_aspect"))) {
-						FString QueryString;
-						const TSharedPtr<FJsonObject>* ArgsObject;
-						if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
-							(*ArgsObject)->TryGetStringField(TEXT("query_string"), QueryString)) {
-							HandleToolCall_QuerySubmarineSystem(QueryString);
-						} else {
-							SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'query_string' in arguments.\"}"));
-						}
-					}
-					else {
-						SendToolResponseToLlama(ToolName, FString::Printf(TEXT("{\"error\": \"Unknown tool name: %s\"}"), *ToolName));
-					}
-				} else {
-					 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Tool call JSON missing 'name' field.\"}"));
-				}
-			} else {
-				 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Invalid tool call JSON format.\"}"));
-			}
-			// OnToolCallDetected.Broadcast(ToolCallJsonRaw); // If BP also needs raw string
-		}
-	};
-    LlamaInternal->errorCb = [this](FString ErrorMessage) {
-        {
-            OnLlamaErrorOccurred.Broadcast(ErrorMessage);
-        }
-    };
-    LlamaInternal->progressCb = [this](float Progress) {
-		{
-            OnLlamaLoadingProgressDelegate.Broadcast(Progress);
-        }
-    };
-    LlamaInternal->readyCb = [this](FString ReadyMessage) {
-        {
-            bIsLlamaCoreReady = true;
-            OnLlamaReady.Broadcast(ReadyMessage);
-        }
-    };
-    LlamaInternal->contextChangedCb = [this](const FContextVisPayload& contextBlocks) {
-        {
-        	FContextVisPayload FinalPayload = (FContextVisPayload&)contextBlocks;
-			FinalPayload.bIsStaticWorldInfoUpToDate = !bPendingStaticWorldInfoUpdate; // If pending, it's not up-to-date on Llama thread yet
-			FinalPayload.bIsLowFrequencyStateUpToDate = !bPendingLowFrequencyStateUpdate;
-			FinalPayload.bIsLlamaCoreActuallyReady = this->bIsLlamaCoreReady;
-			FinalPayload.bIsLlamaCurrentlyIdle = this->bIsLlamaCoreReady && !this->bIsLlamaGenerating.load(std::memory_order_acquire);
-			ForwardContextUpdateToGameThread(FinalPayload);
-            OnLlamaContextChangedDelegate.Broadcast(FinalPayload);
-        }
-    };
-    LlamaInternal->setIsGeneratingCb = [this](bool isGen) {
-        {
-        	bIsLlamaGenerating = isGen;
-        }
-    };
+    PrimaryComponentTick.TickInterval = 0.016f; // ~60 Hz
 }
 
 ULlamaComponent::~ULlamaComponent()
 {
-    // LlamaInternal unique_ptr will handle its own destruction, which calls LlamaInternal->bIsRunning = false and joins thread.
+    if (LlamaInternal)
+    {
+        LlamaInternal->SignalStopRunning();
+        delete LlamaInternal;
+        LlamaInternal = nullptr;
+    }
 }
 
 void ULlamaComponent::BeginPlay()
 {
     Super::BeginPlay();
-    
-    // Initialize the component
-    InitializeProvider();
+
+    // Only create the provider instance, but don't initialize it yet
+    if (GetWorld()->IsGameWorld())
+    {
+        CreateProviderInstance();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::BeginPlay - Skipping provider creation in editor"));
+    }
+}
+
+void ULlamaComponent::CreateProviderInstance()
+{
+    if (Provider)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ULlamaComponent::CreateProviderInstance - Provider already exists!"));
+        return;
+    }
+
+    // Create context manager if needed
+    if (!ContextManager)
+    {
+        ContextManager = NewObject<ULLMContextManager>(this);
+        UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::CreateProviderInstance - Created ContextManager"));
+    }
+
+    // Create the appropriate provider based on configuration
+    if (bUseLocalLlama)
+    {
+        Provider = NewObject<ULocalLlamaProvider>(this);
+        if (ULocalLlamaProvider* LocalProvider = Cast<ULocalLlamaProvider>(Provider))
+        {
+            LocalProvider->SetContextManager(ContextManager);
+            UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::CreateProviderInstance - Created LocalLlamaProvider"));
+        }
+    }
+    else
+    {
+        Provider = NewObject<URemoteLLMProvider>(this);
+        if (URemoteLLMProvider* RemoteProvider = Cast<URemoteLLMProvider>(Provider))
+        {
+            RemoteProvider->SetContextManager(ContextManager);
+            if (!APIKey.IsEmpty())
+            {
+                RemoteProvider->SetAPIKey(APIKey);
+            }
+            UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::CreateProviderInstance - Created RemoteLLMProvider"));
+        }
+    }
+
+    // Set up provider callbacks
+    if (Provider)
+    {
+        Provider->GetOnTokenGenerated().AddDynamic(this, &ULlamaComponent::HandleTokenGenerated);
+        Provider->GetOnContextChanged().AddDynamic(this, &ULlamaComponent::HandleContextChanged);
+        
+        // Bind to the provider's ready state
+        if (ULocalLlamaProvider* LocalProvider = Cast<ULocalLlamaProvider>(Provider))
+        {
+            LocalProvider->OnReady.AddDynamic(this, &ULlamaComponent::HandleProviderReady);
+        }
+
+        // Load and set initial system prompt
+        if (!SystemPromptFileName.IsEmpty())
+        {
+            FString LoadedSystemPrompt;
+            FString SystemPromptFilePath = FPaths::ProjectContentDir() / SystemPromptFileName;
+            
+            if (FFileHelper::LoadFileToString(LoadedSystemPrompt, *SystemPromptFilePath))
+            {
+                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Successfully loaded system prompt from: %s"), *SystemPromptFilePath);
+                ContextManager->UpdateBlock(ELLMContextBlockType::SystemPrompt, LoadedSystemPrompt);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: FAILED to load system prompt from: %s"), *SystemPromptFilePath);
+            }
+        }
+
+        // Initialize provider with model path
+        if (!PathToModel.IsEmpty())
+        {
+            Provider->Initialize(PathToModel);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("ULlamaComponent::CreateProviderInstance - PathToModel is empty!"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("ULlamaComponent::CreateProviderInstance - Failed to create provider!"));
+    }
+}
+
+void ULlamaComponent::InitializeProvider()
+{
+    if (!Provider)
+    {
+        UE_LOG(LogTemp, Error, TEXT("ULlamaComponent::InitializeProvider - Provider not created! Call CreateProviderInstance first."));
+        return;
+    }
+
+    if (bUseLocalLlama && PathToModel.IsEmpty())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ULlamaComponent::InitializeProvider - PathToModel is empty! Provider will not initialize."));
+        return;
+    }
+
+    // Initialize the provider with the appropriate path
+    const FString ModelPath = bUseLocalLlama ? PathToModel : RemoteEndpoint;
+    Provider->Initialize(ModelPath);
 }
 
 FString ULlamaComponent::MakeSystemsBlock()
@@ -1680,26 +1643,29 @@ FString ULlamaComponent::MakeStatusBlock()
     return GameInterface->GetLowFrequencyStateBlock();
 }
 
+#ifdef never
 void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor)		// called by VisualTestHarnessActor::BeginPlay because it is first
 {
+	GameInterface = InGameInterface;
+
     // Initialize the provider if not already done
     if (!Provider)
     {
         InitializeProvider();
     }
 
-    // Update the system prompt with the harness actor's command handlers
-    if (HarnessActor)
-    {
+//    // Update the system prompt with the harness actor's command handlers
+//    if (HarnessActor)
+//    {
         FString SystemsBlock = MakeSystemsBlock();
         UpdateContextBlock(ELlamaContextBlockType::SystemPrompt, SystemsBlock);
-    }
-
-	HarnessActor = InHarnessActor;
-	if (HarnessActor)
-	{
-	}
-	else UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: HarnessActor not found. Llama not initialized."));
+//    }
+//
+//	HarnessActor = InHarnessActor;
+//	if (HarnessActor)
+//	{
+//	}
+//	else UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: HarnessActor not found. Llama not initialized."));
 
 	UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::ActivateLlamaComponent."));
 
@@ -1761,17 +1727,18 @@ LowFreqContextBlock = "";		// TESTING because this changes quickly, as soon as t
 //    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: [1]\n%s\n"), *MakeCommandHandlerString(HarnessActor->CmdDistributor.CommandHandlers[1]));
 
 }
+#endif // never
 
 void ULlamaComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    if (LlamaInternal) {
-        LlamaInternal->SignalStopRunning(); // Signal thread to stop
-        // The LlamaInternal destructor will join the thread.
-        // If you need to explicitly queue a shutdown command:
-        // LlamaInternal->qMainToLlama.enqueue([this]() {
-        //     LlamaInternal->ShutdownLlama_LlamaThread();
-        // });
-    }
+//    if (LlamaInternal) {
+//        LlamaInternal->SignalStopRunning(); // Signal thread to stop
+//        // The LlamaInternal destructor will join the thread.
+//        // If you need to explicitly queue a shutdown command:
+//        // LlamaInternal->qMainToLlama.enqueue([this]() {
+//        //     LlamaInternal->ShutdownLlama_LlamaThread();
+//        // });
+//    }
     if (Provider)
     {
         Provider->Shutdown();
@@ -1780,147 +1747,34 @@ void ULlamaComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
     Super::EndPlay(EndPlayReason);
 }
 
-void ULlamaComponent::InitializeProvider()
+void ULlamaComponent::SetGameInterface(TScriptInterface<ILLMGameInterface> InGameInterface)
 {
-    // Clean up existing provider
-    if (Provider)
+    GameInterface = InGameInterface;
+    
+    // Create provider if not already done
+    if (!Provider)
     {
-        Provider->Shutdown();
-        Provider = nullptr;
+        CreateProviderInstance();
     }
     
-    // Create new provider
-    if (bUseLocalLlama)
+    // Only update system prompt if we're in a game world
+    if (GameInterface && GetWorld()->IsGameWorld())
     {
-        Provider = NewObject<ULocalLlamaProvider>(this);
-    }
-    else
-    {
-        URemoteLLMProvider* RemoteProvider = NewObject<URemoteLLMProvider>(this);
-        RemoteProvider->SetAPIKey(APIKey);
-        Provider = RemoteProvider;
-    }
-    
-    // Set up provider
-    Provider->SetContextManager(ContextManager);
-    Provider->GetOnTokenGenerated().AddDynamic(this, &ULlamaComponent::HandleTokenGenerated);
-    Provider->GetOnContextChanged().AddDynamic(this, &ULlamaComponent::HandleContextChanged);
-    
-    // Initialize provider
-    Provider->Initialize(bUseLocalLlama ? LocalModelPath : RemoteEndpoint);
-}
-
-void ULlamaComponent::SwitchProvider(bool bUseLocal)
-{
-    if (bUseLocalLlama != bUseLocal)
-    {
-        bUseLocalLlama = bUseLocal;
-        InitializeProvider();
+        FString SystemsBlock = MakeSystemsBlock();
+        UpdateContextBlock(ELlamaContextBlockType::SystemPrompt, SystemsBlock);
     }
 }
 
-void ULlamaComponent::ToggleProvider()
+void ULlamaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-    SwitchProvider(!bUseLocalLlama);
-}
-
-void ULlamaComponent::SetProvider(bool bUseLocal)
-{
-    SwitchProvider(bUseLocal);
-}
-
-void ULlamaComponent::UpdateSystemPrompt(const FString& NewPrompt)
-{
-    if (ContextManager)
-    {
-        ContextManager->UpdateBlock(ELLMContextBlockType::SystemPrompt, NewPrompt);
-    }
-}
-
-void ULlamaComponent::UpdateStaticWorldInfo(const FString& NewInfo)
-{
-    if (ContextManager)
-    {
-        ContextManager->UpdateBlock(ELLMContextBlockType::StaticWorldInfo, NewInfo);
-    }
-}
-
-void ULlamaComponent::UpdateLowFrequencyState(const FString& NewState)
-{
-    if (ContextManager)
-    {
-        ContextManager->UpdateBlock(ELLMContextBlockType::LowFrequencyState, NewState);
-    }
-}
-
-//void ULlamaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-//{
-//    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-//    if (LlamaInternal) {
-//        // Process any callbacks from the Llama thread that are pending for the main thread
-//        while(LlamaInternal->qLlamaToMain.processQ());
-//
-////		FString SystemsContextBlock = MakeSystemsBlock();
-////		FString LowFreqContextBlock = MakeStatusBlock();
-////		if (SystemsContextBlockRecent != SystemsContextBlock) {
-////			UE_LOG(LogTemp, Warning, TEXT("SystemsContextBlockRecent != SystemsContextBlock: '%s' != '%s'"), *SystemsContextBlockRecent, *SystemsContextBlock);
-////			UpdateContextBlock(ELlamaContextBlockType::StaticWorldInfo, SystemsContextBlock);
-////			SystemsContextBlockRecent = SystemsContextBlock;
-////		}
-////		if (LowFreqContextBlockRecent != LowFreqContextBlock) {
-////			UE_LOG(LogTemp, Warning, TEXT("LowFreqContextBlockRecent != LowFreqContextBlock: '%s' != '%s'"), *LowFreqContextBlockRecent, *LowFreqContextBlock);
-////			UpdateContextBlock(ELlamaContextBlockType::LowFrequencyState, LowFreqContextBlock);
-////			LowFreqContextBlockRecent = LowFreqContextBlock;
-////		}
-//    }
-//}
-void ULlamaComponent::TickComponent(float DeltaTime,
-                               enum ELevelTick TickType,
-                               FActorComponentTickFunction* ThisTickFunction) {
-//    UE_LOG(LogTemp, Verbose, TEXT("ULlamaComponent::TickComponent CALLED")); // Check if this appears
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (LlamaInternal) {
-		// UE_LOG(LogTemp, Verbose, TEXT("ULlamaComponent::TickComponent - LlamaInternal is VALID. Processing qLlamaToMain."));
-		while(LlamaInternal->qLlamaToMain.processQ());
-	} else {
-		UE_LOG(LogTemp, Error, TEXT("ULlamaComponent::TickComponent - LlamaInternal IS NULL!"));
-	}
-
-    if (bIsLlamaCoreReady) { // Or some other condition to start broadcasting perf
-//        FPerformanceUIPayload PerfPayload;
-//        PerfPayload.LlamaMetrics = LastLlamaMetrics; // Use the latest received
-//
-//        PerfPayload.GameMetrics.FrameTimeMs = GetWorld()->GetDeltaSeconds() * 1000.0f;
-//        // Getting accurate GameThread, RenderThread, GpuTime can be complex and involve stats system
-//        // For a start, FrameTimeMs is good.
-//        // For more detailed stats, look into FEnginePerformanceTimers or the "Stat Unit" data.
-//        // Example for GPU time (can be latent):
-//        PerfPayload.GameMetrics.GpuTimeMs = FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles(0)); // Might need specific RHI
-//
-//        if (OnPerformanceDataUpdatedDelegate.IsBound()) {
-//            OnPerformanceDataUpdatedDelegate.Broadcast(PerfPayload);
-//        }
-
-
-// TODO: update the PerfPayload with per-tick measurements
-/*
-        FPerformanceUIPayload PerfPayload;
-        PerfPayload.LlamaMetrics = LastLlamaMetrics; // LastLlamaMetrics is updated by ForwardLlamaMetricsToGameThread
-
-        PerfPayload.GameMetrics.FrameTimeMs = GetWorld()->GetDeltaSeconds() * 1000.0f;
-        // For GPU time, ensure RHIGetGPUFrameCycles is giving non-zero results if used.
-        PerfPayload.GameMetrics.GpuTimeMs = FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()); // Pass GFrameNumber or 0
-
-        // **** LOG PerfPayload BEFORE BROADCAST ****
-        UE_LOG(LogTemp, Warning, TEXT("ULlamaComponent::Tick - Broadcasting Perf - Frame:%.2f, PromptEval:%.2f, LLMTokensGen: %d"),
-            PerfPayload.GameMetrics.FrameTimeMs,
-            PerfPayload.LlamaMetrics.PromptEvalTimeMs,
-            PerfPayload.LlamaMetrics.TokensGenerated);
-*/
+    if (LlamaInternal) {
+        // Process just one callback per tick to avoid blocking the main thread
+        ProcessResponseQueue();
     }
 
-    if (bIsLlamaCoreReady && HarnessActor) {
+    if (bIsLlamaCoreReady) {
         FString CurrentSystemsBlock = MakeSystemsBlock();
         if (SystemsContextBlockRecent != CurrentSystemsBlock) {
             bPendingStaticWorldInfoUpdate = true;
@@ -1955,41 +1809,6 @@ void ULlamaComponent::TickComponent(float DeltaTime,
     }
 }
 
-std::string ULlamaComponent::MakeHFSString()
-{
-	// STUBBED OUT: move to AIXO
-return "\n";
-/*
-	ASubmarineState *ss = HarnessActor->SubmarineState;
-	std::string str;// = "\nSUBMARINE STATE:";
-	str += "\nLOCATION: " + std::to_string(ss->SubmarineLocation.X) + "," +
-	std::to_string(ss->SubmarineLocation.Y) + "," +
-	std::to_string(ss->SubmarineLocation.Z);
-	str += "\nROTATION: " + std::to_string(ss->SubmarineRotation.Pitch) + "," +
-	std::to_string(ss->SubmarineRotation.Yaw) + "," +
-	std::to_string(ss->SubmarineRotation.Roll);
-	str += "\nVELOCITY: " + std::to_string(ss->Velocity.X) + "," +
-	std::to_string(ss->Velocity.Y) + "," +
-	std::to_string(ss->Velocity.Z);
-	str += "\nLOXLEVEL: " + std::to_string(ss->LOXLevel);
-	str += "\nFLASK1LEVEL: " + std::to_string(ss->Flask1Level);
-	str += "\nFLASK2LEVEL: " + std::to_string(ss->Flask1Level);
-	str += "\nBATTERY1LEVEL: " + std::to_string(ss->Battery1Level);
-	str += "\nBATTERY2LEVEL: " + std::to_string(ss->Battery2Level);
-	str += "\nALERTLEVEL: " + std::string(TCHAR_TO_UTF8(*ss->AlertLevel));
-	str += "\nRUDDERANGLE: " + std::to_string(ss->RudderAngle);
-	str += "\nELEVATORANGLE: " + std::to_string(ss->ElevatorAngle);
-	str += "\nRIGHTBOWPLANEANGLE: " + std::to_string(ss->RightBowPlanesAngle);
-	str += "\nLEFTBOWPLANEANGLE: " + std::to_string(ss->LeftBowPlanesAngle);
-	str += "\nFORWARDMBTLEVEL: " + std::to_string(ss->ForwardMBTLevel);
-	str += "\nREARMBTLEVEL: " + std::to_string(ss->RearMBTLevel);
-	str += "\nFORWARDTBTLEVEL: " + std::to_string(ss->ForwardTBTLevel);
-	str += "\nREARTBTLEVEL: " + std::to_string(ss->RearTBTLevel);
-	str += "\n\n";
-	return str;
-*/
-}
-
 void ULlamaComponent::ProcessInput(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint)
 {
     if (Provider)
@@ -1998,8 +1817,9 @@ void ULlamaComponent::ProcessInput(const FString& InputText, const FString& High
     }
 }
 
-void ULlamaComponent::HandleTokenGenerated(const FString& Token)  // Renamed from OnTokenGenerated
+void ULlamaComponent::HandleTokenGenerated_Implementation(const FString& Token)
 {
+    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::HandleTokenGenerated - Received token: %s"), *Token);
     // Forward to both the delegate and the interface
     OnTokenGenerated.Broadcast(Token);
     if (VisualizationInterface)
@@ -2007,8 +1827,6 @@ void ULlamaComponent::HandleTokenGenerated(const FString& Token)  // Renamed fro
         VisualizationInterface->HandleTokenGenerated(Token);
     }
 }
-
-
 
 // This function is called by the lambda queued from Internal::Llama::toolCallCb
 void ULlamaComponent::HandleToolCall_GetSystemInfo(const FString& QueryString)
@@ -2053,11 +1871,11 @@ void ULlamaComponent::SendToolResponseToLlama(const FString& ToolName, const FSt
     ProcessInput(JsonResponseContent, TEXT(""), TEXT("tool"));
 }
 
+UFUNCTION(Category = "Llama|Context")
 void ULlamaComponent::HandleContextChanged(const FContextVisPayload& Payload)
 {
-    // Update our local copy
-    CurrentVisualization = Payload;
-    
+    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::HandleContextChanged - Received context update. Blocks: %d, KvCacheCount: %d"), 
+        Payload.Blocks.Num(), Payload.KvCacheDecodedTokenCount);
     // Forward to both the delegate and the interface
     OnLlamaContextChangedDelegate.Broadcast(Payload);
     if (VisualizationInterface)
@@ -2065,24 +1883,6 @@ void ULlamaComponent::HandleContextChanged(const FContextVisPayload& Payload)
         VisualizationInterface->UpdateVisualization(Payload);
     }
 }
-
-void ULlamaComponent::UpdateContextVisualization()
-{
-    if (Provider)
-    {
-        HandleContextChanged(Provider->GetContextVisualization());
-    }
-}
-
-//void ULlamaComponent::UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent)
-//{
-//    if (LlamaInternal) {
-//        FString TextCopy = NewTextContent; // Ensure lifetime for lambda
-//        LlamaInternal->qMainToLlama.enqueue([this, BlockType, TextCopy]() {
-//            LlamaInternal->UpdateContextBlock_LlamaThread(BlockType, TextCopy);
-//        });
-//    }
-//}
 
 void ULlamaComponent::UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent)
 {
@@ -2106,16 +1906,6 @@ void ULlamaComponent::UpdateContextBlock(ELlamaContextBlockType BlockType, const
         }
         
         Provider->UpdateContextBlock(ProviderBlockType, NewTextContent);
-    }
-}
-
-void ULlamaComponent::TriggerFullContextDump()
-{
-    if (Provider)
-    {
-        // Get the current visualization which will trigger a context dump
-        FContextVisPayload Payload = Provider->GetContextVisualization();
-        HandleContextChanged(Payload);
     }
 }
 
@@ -2150,22 +1940,35 @@ void ULlamaComponent::SetVisualizationInterface(TScriptInterface<ILLMVisualizati
     VisualizationInterface = InVisualizationInterface;
 }
 
-void ULlamaComponent::SetGameInterface(TScriptInterface<ILLMGameInterface> InGameInterface)
+// Add these implementations after the existing ULlamaComponent methods
+
+void ULlamaComponent::Initialize(const FString& ModelPath)
 {
-    GameInterface = InGameInterface;
-    
-    // Initialize the provider if not already done
     if (!Provider)
     {
-        InitializeProvider();
+        UE_LOG(LogTemp, Error, TEXT("ULlamaComponent::Initialize - Provider is null!"));
+        return;
     }
-    
-    // Update the system prompt with the game's command handlers
-    if (GameInterface)
-    {
-        FString SystemsBlock = MakeSystemsBlock();
-        UpdateContextBlock(ELlamaContextBlockType::SystemPrompt, SystemsBlock);
-    }
+
+    UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::Initialize - Initializing with path: %s"), *ModelPath);
+    Provider->Initialize(ModelPath);
+}
+
+bool ULlamaComponent::IsLlamaBusy() const
+{
+    return bIsLlamaGenerating.load(std::memory_order_acquire);
+}
+
+bool ULlamaComponent::IsLlamaReady() const
+{
+    return bIsLlamaCoreReady;
+}
+
+void ULlamaComponent::HandleProviderReady(const FString& ReadyMessage)
+{
+    UE_LOG(LogTemp, Log, TEXT("LlamaComponent: Provider is ready: %s"), *ReadyMessage);
+    bIsLlamaCoreReady = true;
+    OnLlamaReady.Broadcast(ReadyMessage);
 }
 
 

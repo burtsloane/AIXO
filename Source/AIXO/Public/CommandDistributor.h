@@ -10,8 +10,9 @@ class PWR_PowerSegment;
  */
 class CommandDistributor
 {
-private:
+public:
     TArray<ICommandHandler*> CommandHandlers;
+private:
     TMap<FString, ICommandHandler*> HandlerMap;
     TArray<PWR_PowerSegment*> Segments;
 

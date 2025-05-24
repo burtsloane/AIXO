@@ -45,6 +45,11 @@ public:
     const TMap<ELLMContextBlockType, FString>& GetBlocks() const { return Blocks; }
     const TArray<ELLMContextBlockType>& GetBlockOrder() const { return BlockOrder; }
 
+    // Convenience functions for common block types
+    FString GetSystemPrompt() const { return GetBlockContent(ELLMContextBlockType::SystemPrompt); }
+    FString GetSystemsInfo() const { return GetBlockContent(ELLMContextBlockType::StaticWorldInfo); }
+    FString GetLowFreqState() const { return GetBlockContent(ELLMContextBlockType::LowFrequencyState); }
+
 private:
     struct FBlockInfo {
         FString Content;

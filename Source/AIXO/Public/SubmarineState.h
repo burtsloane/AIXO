@@ -16,9 +16,6 @@ public:
     ASubmarineState();
 
     UFUNCTION(BlueprintCallable)
-    void ExecuteCommandLine(const FString& Line);
-
-    UFUNCTION(BlueprintCallable)
     FString GetStateAsText() const;
 
     UFUNCTION(BlueprintCallable)
@@ -150,7 +147,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     TArray<FString> LogBuffer;
 
-    CommandDistributor* CommandDispatcher;
+//    CommandDistributor* CmdDistributor;
 
     TArray<ICommandHandler*> Systems;
 

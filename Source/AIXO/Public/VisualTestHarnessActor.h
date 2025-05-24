@@ -10,6 +10,7 @@
 #include "Components/NativeWidgetHost.h"
 #include "ICH_PowerJunction.h"
 #include "PWR_PowerSegment.h"
+#include "SubmarineGameManager.h"
 #include "VisualTestHarnessActor.generated.h"
 
 // Forward Declarations
@@ -196,6 +197,9 @@ private:
 	TArray<TUniquePtr<ICH_PowerJunction>> PersistentJunctions;
 	TArray<TUniquePtr<PWR_PowerSegment>>  PersistentSegments;
 
+	ASubmarineGameManager *SubmarineGameManager;
+//	SubmarineGameManager = GetWorld()->SpawnActor<ASubmarineGameManager>(ASubmarineGameManager::StaticClass());
+
 public:
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	UFont* TinyFont = nullptr;
@@ -243,4 +247,8 @@ public:
 	bool IsPointInEmptySpace(const FVector2D& Point) const;
 
 	friend class VisualizationManager;
+
+	// Add manual initialization function
+	UFUNCTION(BlueprintCallable, Category = "AIXO|Llama")
+	bool InitializeLlamaComponent();
 }; 
