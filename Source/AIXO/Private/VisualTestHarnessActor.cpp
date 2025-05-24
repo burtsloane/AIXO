@@ -239,7 +239,7 @@ void AVisualTestHarnessActor::BeginPlay()
     if (LlamaAIXOComponent)
     {
 		FString SystemsContextBlock = MakeSystemsBlock();
-		FString LowFreqContextBlock = MakeStatusBlock();
+		FString LowFreqContextBlock = "";//MakeStatusBlock();		// don't decode this before starting the grid up - propagation
 		SystemsContextBlockRecent = SystemsContextBlock;
 		LowFreqContextBlockRecent = LowFreqContextBlock;
         LlamaAIXOComponent->ActivateLlamaComponent(SystemsContextBlock, LowFreqContextBlock);
@@ -1933,10 +1933,7 @@ void AVisualTestHarnessActor::SendToolResponseToLlama(const FString& ToolName, c
     LlamaAIXOComponent->ProcessInput(JsonResponseContent, MakeHFSString(), TEXT("tool"));
 }
 
-//void AVisualTestHarnessActor::AugmentVisPayload(const FContextVisPayload& contextBlocks)
-//{
-//}
-
+// payload from LlamaImpl->contextChangedCb, called from blueprint before contextBlocks is passed to LLGaugeWidget
 FContextVisPayload AVisualTestHarnessActor::AugmentContextVisPayload(FContextVisPayload p)
 {
 	p.bIsStaticWorldInfoUpToDate &= !bPendingStaticWorldInfoUpdate;

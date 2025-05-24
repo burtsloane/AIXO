@@ -4,9 +4,7 @@
 #include <Components/ActorComponent.h>
 #include <CoreMinimal.h>
 #include "LLInternal.h"
-
 #include "LLContextVisualizationData.h"
-
 #include "LlamaComponent.generated.h"
 
 // Delegates
@@ -17,7 +15,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaErrorOccurred, const FString
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaLoadingProgressDelegate, float, Progress);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaReady, const FString&, ReadyMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaContextChangedDelegate, const FContextVisPayload&, ContextMessage);
-
 
 UCLASS(Category = "LLM", BlueprintType, meta = (BlueprintSpawnableComponent))
 class UELLAMA_API ULlamaComponent : public UActorComponent
@@ -35,7 +32,15 @@ public:
 
 	void ActivateLlamaComponent(FString SystemsContextBlock, FString LowFreqContextBlock);
 
-    // Delegates
+public:		// setup in blueprints
+	// setup variables, don't change these while running
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
+    FString PathToModel;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
+    FString SystemPromptFileName;
+
+public:		// Delegates
     UPROPERTY(BlueprintAssignable)
     FOnNewTokenGenerated OnNewTokenGenerated;
 
@@ -57,14 +62,7 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Llama")
     FOnLlamaContextChangedDelegate OnLlamaContextChangedDelegate;
 
-	// setup variables
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
-    FString PathToModel;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
-    FString SystemPromptFileName;
-
-public:	// functions
+public:	// main LLM control functions
     UFUNCTION(BlueprintCallable, Category = "Llama")
     void UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent);
 
@@ -74,9 +72,6 @@ public:	// functions
     UFUNCTION(BlueprintCallable, Category = "Llama|Debug")
     void TriggerFullContextDump();
 
-private:
-    LLInternal* LlamaImpl;
-
 public:
     UFUNCTION(BlueprintPure, Category = "Llama")
     bool IsLlamaBusy() const { return bIsLlamaGenerating; }
@@ -85,6 +80,7 @@ public:
     bool IsLlamaReady() const { return bIsLlamaCoreReady; }
 
 private:
+    LLInternal* LlamaImpl;
     bool bIsLlamaGenerating; // This is set by Llama thread via a callback when it starts/stops generation.
     bool bIsLlamaCoreReady = false; // Set by callback from Llama thread
 };

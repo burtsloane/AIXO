@@ -62,6 +62,7 @@ private:
     float CachedmsPerTokenGenerate = 0.0f;
 
     // Handler function for the LlamaComponent's delegate
+	// payload from LlamaImpl->contextChangedCb, blueprint calls AVisualTestHarnessActor::AugmentContextVisPayload before this
     UFUNCTION(BlueprintCallable) // Must be UFUNCTION to bind to a dynamic multicast delegate
     void HandleLlamaContextChanged(const FContextVisPayload& NewContextState);
 
