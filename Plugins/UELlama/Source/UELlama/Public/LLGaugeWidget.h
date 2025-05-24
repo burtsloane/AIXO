@@ -24,12 +24,12 @@ public:
 
     // Call this from your game logic (e.g., HUD Blueprint, PlayerController)
     // to link this UI widget to a specific LlamaComponent instance.
-    UFUNCTION(BlueprintCallable, Category = "LlamaUI")
-    void SetLlamaComponent(ULlamaComponent* InLlamaComponent);
+//    UFUNCTION(BlueprintCallable, Category = "LlamaUI")
+//    void SetLlamaComponent(ULlamaComponent* InLlamaComponent);
 
-    // UPROPERTY to allow setting the LlamaComponent target in Blueprint editor (optional)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LlamaUI", meta = (ExposeOnSpawn = "true"))
-    TObjectPtr<ULlamaComponent> TargetLlamaComponent;
+//    // UPROPERTY to allow setting the LlamaComponent target in Blueprint editor (optional)
+//    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LlamaUI", meta = (ExposeOnSpawn = "true"))
+//    TObjectPtr<ULlamaComponent> TargetLlamaComponent;
 
 protected:
     // UUserWidget Overrides
@@ -62,7 +62,7 @@ private:
     float CachedmsPerTokenGenerate = 0.0f;
 
     // Handler function for the LlamaComponent's delegate
-    UFUNCTION() // Must be UFUNCTION to bind to a dynamic multicast delegate
+    UFUNCTION(BlueprintCallable) // Must be UFUNCTION to bind to a dynamic multicast delegate
     void HandleLlamaContextChanged(const FContextVisPayload& NewContextState);
 
     // Getter functions for Slate attribute binding

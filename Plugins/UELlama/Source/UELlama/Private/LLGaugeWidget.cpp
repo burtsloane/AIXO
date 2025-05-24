@@ -53,50 +53,50 @@ void ULLGaugeWidget::NativeConstruct()
 
     // RebuildWidget() will be called by the system to get the Slate widget.
     // If TargetLlamaComponent was set as an exposed property on spawn, try to bind now.
-    if (TargetLlamaComponent)
-    {
-        SetLlamaComponent(TargetLlamaComponent);
-    }
+//    if (TargetLlamaComponent)
+//    {
+//        SetLlamaComponent(TargetLlamaComponent);
+//    }
 }
 
 void ULLGaugeWidget::NativeDestruct()
 {
     // Unbind from the delegate when the widget is destroyed
-	if (TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound()) {
-		TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
-	}
+//	if (TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound()) {
+//		TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
+//	}
     Super::NativeDestruct();
 }
 
-void ULLGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaComponent)
-{
-    // Unbind from old component, if any
-    if (TargetLlamaComponent && TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound())
-    {
-        TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
-    }
-
-    TargetLlamaComponent = InLlamaComponent;
-
-    // Bind to new component's delegate
-    if (TargetLlamaComponent)
-    {
-        TargetLlamaComponent->OnLlamaContextChangedDelegate.AddDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
-        UE_LOG(LogTemp, Log, TEXT("LLGaugeWidget: Bound to LlamaComponent %s"), *TargetLlamaComponent->GetName());
-
-        // Optional: Request an initial update if the LlamaComponent supports it
-        // This would require LlamaComponent to have a method that broadcasts its current state.
-        // For example:
-        // if (TargetLlamaComponent->IsLlamaCoreReady()) // Assuming LlamaComponent has such a flag
-        // {
-        //    TargetLlamaComponent->TriggerContextVisualUpdateBroadcast(); // You'd add this method to LlamaComponent
-        // }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("LLGaugeWidget: SetLlamaComponent called with null. Unbound."));
-    }
-}
+//void ULLGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaComponent)
+//{
+//    // Unbind from old component, if any
+////    if (TargetLlamaComponent && TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound())
+////    {
+////        TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
+////    }
+//
+////    TargetLlamaComponent = InLlamaComponent;
+//
+////    // Bind to new component's delegate
+////    if (TargetLlamaComponent)
+////    {
+////        TargetLlamaComponent->OnLlamaContextChangedDelegate.AddDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
+////        UE_LOG(LogTemp, Log, TEXT("LLGaugeWidget: Bound to LlamaComponent %s"), *TargetLlamaComponent->GetName());
+////
+////        // Optional: Request an initial update if the LlamaComponent supports it
+////        // This would require LlamaComponent to have a method that broadcasts its current state.
+////        // For example:
+////        // if (TargetLlamaComponent->IsLlamaCoreReady()) // Assuming LlamaComponent has such a flag
+////        // {
+////        //    TargetLlamaComponent->TriggerContextVisualUpdateBroadcast(); // You'd add this method to LlamaComponent
+////        // }
+////    }
+////    else
+////    {
+////        UE_LOG(LogTemp, Warning, TEXT("LLGaugeWidget: SetLlamaComponent called with null. Unbound."));
+////    }
+//}
 
 void ULLGaugeWidget::HandleLlamaContextChanged(const FContextVisPayload& NewContextState)
 {

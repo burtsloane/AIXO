@@ -57,14 +57,14 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Llama")
     FOnLlamaContextChangedDelegate OnLlamaContextChangedDelegate;
 
-	//
-
+	// setup variables
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config")
     FString PathToModel;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama|Config", meta = (MultiLine = true))
     FString SystemPromptFileName;
 
+public:	// functions
     UFUNCTION(BlueprintCallable, Category = "Llama")
     void UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent);
 
@@ -75,28 +75,7 @@ public:
     void TriggerFullContextDump();
 
 private:
-	void ProcessToolCall(const FString &ToolCallJsonRaw);
-	void HandleToolCall_GetSystemInfo(const FString& QueryString);
-	void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
-	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
-	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
-
-private:
-    LLInternal* LlamaImpl; // Renamed from llama
-    bool bIsLlamaCoreReady = false; // Set by callback from Llama thread
-
-	FString MakeCommandHandlerString(ICommandHandler *ich);
-	FString MakeSystemsBlock();
-	FString MakeStatusBlock();
-	FString MakeHFSString();
-
-private:
-//	FString SystemsContextBlockRecent;
-//	FString LowFreqContextBlockRecent;
-//    bool bPendingStaticWorldInfoUpdate = false;
-//    FString PendingStaticWorldInfoText;
-//    bool bPendingLowFrequencyStateUpdate = false;
-//    FString PendingLowFrequencyStateText;
+    LLInternal* LlamaImpl;
 
 public:
     UFUNCTION(BlueprintPure, Category = "Llama")
@@ -106,6 +85,7 @@ public:
     bool IsLlamaReady() const { return bIsLlamaCoreReady; }
 
 private:
-    bool bIsLlamaGenerating; // This can be set by Llama thread via a callback when it starts/stops generation.
+    bool bIsLlamaGenerating; // This is set by Llama thread via a callback when it starts/stops generation.
+    bool bIsLlamaCoreReady = false; // Set by callback from Llama thread
 };
 

@@ -259,6 +259,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Commands")
 	TArray<FString> GetSystemNotifications();
 
+	UFUNCTION(BlueprintCallable, Category = "Commands")
+	FContextVisPayload AugmentContextVisPayload(FContextVisPayload p);
+
 public:
 	friend class VisualizationManager;
 	friend class SSubDiagram;

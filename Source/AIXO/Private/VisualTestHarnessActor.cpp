@@ -375,7 +375,7 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
             }
         } else {
             if (bPendingStaticWorldInfoUpdate || bPendingLowFrequencyStateUpdate) {
-                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Llama is busy, context updates deferred."));
+//                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Llama is busy, context updates deferred."));
             }
         }
     }
@@ -1612,7 +1612,7 @@ FString AVisualTestHarnessActor::MakeHFSString()
 	return UTF8_TO_TCHAR(str.c_str());
 }
 
-//#define FULL_SYSTEMS_DESC_IN_CONTEXT
+#define FULL_SYSTEMS_DESC_IN_CONTEXT
 FString AVisualTestHarnessActor::MakeSystemsBlock()
 {
 #ifdef FULL_SYSTEMS_DESC_IN_CONTEXT
@@ -1936,3 +1936,11 @@ void AVisualTestHarnessActor::SendToolResponseToLlama(const FString& ToolName, c
 //void AVisualTestHarnessActor::AugmentVisPayload(const FContextVisPayload& contextBlocks)
 //{
 //}
+
+FContextVisPayload AVisualTestHarnessActor::AugmentContextVisPayload(FContextVisPayload p)
+{
+	p.bIsStaticWorldInfoUpToDate &= !bPendingStaticWorldInfoUpdate;
+	p.bIsLowFrequencyStateUpToDate &= !bPendingLowFrequencyStateUpdate;
+
+	return p;
+}

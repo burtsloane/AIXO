@@ -1241,7 +1241,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 			// else if (Type == EContextVisBlockType::FocusInstruction) Color = FLinearColor::FromSRGBColor(FColor(0xFF,0xFF,0x00)); // Yellow (example)
 
 			FText Tooltip = FText::FromString(FString::Printf(TEXT("%s%s (%d tokens)"), *TooltipPrefix, *TypeName, Tokens.size()));
-			Payload.Blocks.Add(FContextVisBlock(Type, CurrentNormalizedPosition, NormalizedHeight, Color, Tooltip));
+			Payload.Blocks.Add(FContextVisBlock(Type, AccumulatedTokensForVisualizedPromptStructure, CurrentNormalizedPosition, NormalizedHeight, Color, Tooltip));
 			
 			CurrentNormalizedPosition += NormalizedHeight;
 			AccumulatedTokensForVisualizedPromptStructure += Tokens.size();
@@ -1317,6 +1317,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 			if (FreeHeight > 0.00001f) { // Only add if there's actual space
 				 Payload.Blocks.Add(FContextVisBlock(
 					EContextVisBlockType::FreeSpace, 
+					AccumulatedTokensForVisualizedPromptStructure,
 					CurrentNormalizedPosition, 
 					FreeHeight, 
 					FLinearColor(0.1f, 0.1f, 0.1f, 0.5f), // Dark semi-transparent gray
@@ -1329,51 +1330,8 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		FContextVisPayload PayloadCopy = Payload;
 		qLlamaToMain.enqueue([this, PayloadCopy]() { if (contextChangedCb) contextChangedCb(PayloadCopy); });
 
-//		// Marshal to main thread
-//		if (OwningLlamaComponentPtr) {
-//			// Create a copy of Payload specifically for the lambda to capture.
-//			// This ensures the data persists until the lambda executes.
-//			FContextVisPayload PayloadCopy = Payload;
-//
-////			UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda queued."));
-//
-//			qLlamaToMain.enqueue([this, PayloadCopy]() { if (contextChangedCb) contextChangedCb(PayloadCopy); });
-////			qLlamaToMain.enqueue([OwnerPtr = OwningLlamaComponentPtr, CapturedPayload = PayloadCopy]() {
-////				// This lambda now runs on the Main Thread.
-//////				UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's marshal lambda starts on main thread."));
-////				// OwnerPtr and CapturedPayload are copies held by the lambda.
-////				if (OwnerPtr && OwnerPtr->IsValidLowLevel()) { // Good practice to check validity on main thread
-////					OwnerPtr->ForwardContextUpdateToGameThread(CapturedPayload);
-//////					UE_LOG(LogTemp, Warning, TEXT("ForwardContextUpdateToGameThread lambda executed. dec ms=%.f gen ms=%.f"), CapturedPayload.fFmsPerTokenDecode, CapturedPayload.fFmsPerTokenGenerate);
-////				} else {
-////					UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's OwningLlamaComponentPtr was null or invalid when ForwardContextUpdateToGameThread lambda executed."));
-////				}
-////			});
-//		} else {
-//			UE_LOG(LogTemp, Error, TEXT("LlamaThread: OwningLlamaComponentPtr is null in BroadcastContextVisualUpdate. Cannot send update."));
-//		}
-
 //  UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Broadcasting Context Update. TotalTokenCapacity: %d, KvCacheDecodedTokenCount: %d, NumVisualBlocks: %d, decodems: %g, genms: %g"), Payload.TotalTokenCapacity, Payload.KvCacheDecodedTokenCount, Payload.Blocks.Num(), Payload.fFmsPerTokenDecode, Payload.fFmsPerTokenGenerate);
-/*
-  for (int32 i = 0; i < Payload.Blocks.Num(); ++i) {
-      const FContextVisBlock& Block = Payload.Blocks[i];
-      FString BlockTypeName = UEnum::GetValueAsString(Block.BlockType);
-//      UE_LOG(LogTemp, Log, TEXT("  Block %d: Type=%s, Start=%.2f, Height=%.4f, Color=(R=%.1f,G=%.1f,B=%.1f)"), i, *BlockTypeName, Block.NormalizedStart, Block.NormalizedHeight, Block.BlockColor.R, Block.BlockColor.G, Block.BlockColor.B);
-  }
-
-  if (OwningLlamaComponentPtr) { // Ensure OwningLlamaComponentPtr is valid
-       FContextVisPayload PayloadCopy = Payload;
-       qLlamaToMain.enqueue([this, PayloadCopy]() mutable {
-          if (OwningLlamaComponentPtr && OwningLlamaComponentPtr->IsValidLowLevel()) {
-//				UE_LOG(LogTemp, Warning, TEXT("LlamaComponent's second marshal lambda starts on main thread."));
-              OwningLlamaComponentPtr->ForwardContextUpdateToGameThread(PayloadCopy);
-          }
-       });
-  }
-*/
-  
-  
-  	}
+}
 
 	void LLInternal::ProcessInputAndGenerate_LlamaThread(
 		const FString& InputTextFStr,             // The raw text from the user or tool response

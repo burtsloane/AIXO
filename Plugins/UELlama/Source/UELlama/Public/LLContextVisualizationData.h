@@ -103,6 +103,10 @@ struct FContextVisBlock
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ContextVis")
     EContextVisBlockType BlockType = EContextVisBlockType::Unknown;
 
+    // Start position of this block, in tokens
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ContextVis")
+    int32 NormalizedStartInTokens = 0;
+
     // Start position of this block, normalized (0.0 at bottom, 1.0 at top of total capacity)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ContextVis")
     float NormalizedStart = 0.0f;
@@ -119,8 +123,8 @@ struct FContextVisBlock
 
     FContextVisBlock() = default;
 
-    FContextVisBlock(EContextVisBlockType InType, float InStart, float InHeight, FLinearColor InColor, FText InTooltip = FText())
-        : BlockType(InType), NormalizedStart(InStart), NormalizedHeight(InHeight), BlockColor(InColor), TooltipText(InTooltip)
+    FContextVisBlock(EContextVisBlockType InType, int32 InTokenCursor, float InStart, float InHeight, FLinearColor InColor, FText InTooltip = FText())
+        : BlockType(InType), NormalizedStartInTokens(InTokenCursor), NormalizedStart(InStart), NormalizedHeight(InHeight), BlockColor(InColor), TooltipText(InTooltip)
     {}
 };
 
@@ -139,11 +143,11 @@ struct FContextVisPayload
     int32 TotalTokenCapacity = 32768;
 
     // The number of tokens currently processed and stored in the KV cache
-    // This is where the black line will be drawn.
+    // This is where the white line will be drawn.
     UPROPERTY(BlueprintReadWrite, Category = "ContextVis")
     int32 KvCacheDecodedTokenCount = 0;
 
-    // NEW Flags
+    // Flags
     UPROPERTY(BlueprintReadWrite, Category = "ContextVis")
     bool bIsStaticWorldInfoUpToDate = true;
 
