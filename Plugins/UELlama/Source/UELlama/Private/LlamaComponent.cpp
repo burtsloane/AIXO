@@ -1,7 +1,7 @@
 // LlamaComponent.cpp
 #include "LlamaComponent.h"
-#include "Misc/FileHelper.h"      // **** ADD THIS FOR FILE OPERATIONS ****
-#include "Misc/Paths.h"           // **** ADD THIS FOR PROJECT PATHS ****
+#include "Misc/FileHelper.h"      // **** FOR FILE OPERATIONS ****
+#include "Misc/Paths.h"           // **** FOR PROJECT PATHS ****
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -11,9 +11,9 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
 {
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.bStartWithTickEnabled = true;
-    LlamaImpl = new LlamaInternal();
+    LlamaImpl = new LLInternal();
 
-    // Setup delegates to marshal callbacks from LlamaInternal to ULlamaComponent's Blueprint delegates
+    // Setup delegates to marshal callbacks from LLInternal to ULlamaComponent's Blueprint delegates
     LlamaImpl->tokenCb = [this](FString NewToken) {
         { // Ensure BP delegate is called on game thread
             OnNewTokenGenerated.Broadcast(NewToken);
@@ -141,7 +141,7 @@ void ULlamaComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
         LlamaImpl->SignalStopRunning(); // Signal thread to stop
         // The LlamaImpl destructor will join the thread.
         // If you need to explicitly queue a shutdown command:
-        // LlamaInternal->qMainToLlama.enqueue([this]() {
+        // LLInternal->qMainToLlama.enqueue([this]() {
         //     LlamaImpl->ShutdownLlama_LlamaThread();
         // });
     }

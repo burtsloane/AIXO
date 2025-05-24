@@ -1612,7 +1612,7 @@ FString AVisualTestHarnessActor::MakeHFSString()
 	return UTF8_TO_TCHAR(str.c_str());
 }
 
-#define FULL_SYSTEMS_DESC_IN_CONTEXT
+//#define FULL_SYSTEMS_DESC_IN_CONTEXT
 FString AVisualTestHarnessActor::MakeSystemsBlock()
 {
 #ifdef FULL_SYSTEMS_DESC_IN_CONTEXT

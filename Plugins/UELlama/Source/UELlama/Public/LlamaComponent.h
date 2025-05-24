@@ -3,14 +3,9 @@
 
 #include <Components/ActorComponent.h>
 #include <CoreMinimal.h>
-//#include <atomic>
-//#include <deque>
-//#include <thread>
-//#include <functional>
-//#include <mutex>
-#include "LlamaInternal.h"
+#include "LLInternal.h"
 
-#include "ContextVisualizationData.h"
+#include "LLContextVisualizationData.h"
 
 #include "LlamaComponent.generated.h"
 
@@ -87,7 +82,7 @@ private:
 	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
 
 private:
-    LlamaInternal* LlamaImpl; // Renamed from llama
+    LLInternal* LlamaImpl; // Renamed from llama
     bool bIsLlamaCoreReady = false; // Set by callback from Llama thread
 
 	FString MakeCommandHandlerString(ICommandHandler *ich);

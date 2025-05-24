@@ -1,14 +1,14 @@
-// SContextVisualizer.h
+// SLLContextVisualizer.h
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Widgets/SLeafWidget.h"
-#include "ContextVisualizationData.h"
+#include "LLContextVisualizationData.h"
 
-class UELLAMA_API SContextVisualizer : public SLeafWidget
+class UELLAMA_API SLLContextVisualizer : public SLeafWidget
 {
 public:
-    SLATE_BEGIN_ARGS(SContextVisualizer)
+    SLATE_BEGIN_ARGS(SLLContextVisualizer)
         : _TotalTokenCapacity(32768)
         , _KvCacheDecodedTokenCount(0)
         , _IsStaticWorldInfoUpToDate(true)

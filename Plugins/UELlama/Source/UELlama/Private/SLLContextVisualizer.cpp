@@ -1,11 +1,11 @@
-// SContextVisualizer.cpp
-#include "SContextVisualizer.h"
+// SLLContextVisualizer.cpp
+#include "SLLContextVisualizer.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h" // For FCoreStyle
 #include "Framework/Application/SlateApplication.h" // <-- For FSlateApplication and FontMeasureService
 #include "Fonts/FontMeasure.h" // <-- For FSlateFontMeasure definition (often pulled in by SlateApplication)
 
-void SContextVisualizer::Construct(const FArguments& InArgs)
+void SLLContextVisualizer::Construct(const FArguments& InArgs)
 {
     CurrentContextBlocks = InArgs._ContextBlocks;
     TotalTokenCapacityInternal = InArgs._TotalTokenCapacity;
@@ -19,39 +19,39 @@ void SContextVisualizer::Construct(const FArguments& InArgs)
     SetCanTick(false);
 }
 
-void SContextVisualizer::SetContextBlocks(TAttribute<TArray<FContextVisBlock>> InBlocks)
+void SLLContextVisualizer::SetContextBlocks(TAttribute<TArray<FContextVisBlock>> InBlocks)
 {
     CurrentContextBlocks = InBlocks;
     Invalidate(EInvalidateWidget::Paint);
 }
 
-void SContextVisualizer::SetTotalTokenCapacity(TAttribute<int32> InCapacity)
+void SLLContextVisualizer::SetTotalTokenCapacity(TAttribute<int32> InCapacity)
 {
     TotalTokenCapacityInternal = InCapacity;
     Invalidate(EInvalidateWidget::Paint);
 }
 
-void SContextVisualizer::SetKvCacheDecodedTokenCount(TAttribute<int32> InKvCacheCount)
+void SLLContextVisualizer::SetKvCacheDecodedTokenCount(TAttribute<int32> InKvCacheCount)
 {
     KvCacheDecodedTokenCountInternal = InKvCacheCount;
     Invalidate(EInvalidateWidget::Paint);
 }
 
-FVector2D SContextVisualizer::ComputeDesiredSize(float LayoutScaleMultiplier) const
+FVector2D SLLContextVisualizer::ComputeDesiredSize(float LayoutScaleMultiplier) const
 {
     return FVector2D(10.0f * LayoutScaleMultiplier, 300.0f * LayoutScaleMultiplier);
 }
 
-int32 SContextVisualizer::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+int32 SLLContextVisualizer::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
-//UE_LOG(LogTemp, Log, TEXT("SContextVisualizer::OnPaint - SWI UpToDate: %d, LFS UpToDate: %d, CoreReady: %d, LLM Idle: %d"),
+//UE_LOG(LogTemp, Log, TEXT("SLLContextVisualizer::OnPaint - SWI UpToDate: %d, LFS UpToDate: %d, CoreReady: %d, LLM Idle: %d"),
 //    IsStaticWorldInfoUpToDateInternal.Get(),
 //    IsLowFrequencyStateUpToDateInternal.Get(),
 //    IsLlamaCoreActuallyReadyInternal.Get(),
 //    IsLlamaCurrentlyIdleInternal.Get());
 //{
 //const FPerformanceUIPayload& PerfData = PerformanceDataInternal.Get();
-//UE_LOG(LogTemp, Warning, TEXT("SContextVisualizer::OnPaint - PerfData - Frame:%.2f, PromptEval:%.2f, TokenGen:%.2f, Avg/Tok:%.2f"),
+//UE_LOG(LogTemp, Warning, TEXT("SLLContextVisualizer::OnPaint - PerfData - Frame:%.2f, PromptEval:%.2f, TokenGen:%.2f, Avg/Tok:%.2f"),
 //    PerfData.GameMetrics.FrameTimeMs,
 //    PerfData.LlamaMetrics.PromptEvalTimeMs,
 //    PerfData.LlamaMetrics.TokenGenerationTimeMs,

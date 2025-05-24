@@ -1,26 +1,26 @@
-// LlamaContextGaugeWidget.h
+// LLGaugeWidget.h
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "ContextVisualizationData.h" // Your struct definitions (FContextVisPayload, etc.)
-#include "LlamaContextGaugeWidget.generated.h" // Must be last include in .h
+#include "LLContextVisualizationData.h" // Your struct definitions (FContextVisPayload, etc.)
+#include "LLGaugeWidget.generated.h" // Must be last include in .h
 
 // Forward declarations
-class SContextVisualizer; // The Slate widget it will host
+class SLLContextVisualizer; // The Slate widget it will host
 class ULlamaComponent;    // The component it will get data from
 
 /**
  * UMG Widget to display the LLM context visualization bar.
- * This widget hosts the SContextVisualizer Slate widget.
+ * This widget hosts the SLLContextVisualizer Slate widget.
  */
 UCLASS()
-class UELLAMA_API ULlamaContextGaugeWidget : public UUserWidget
+class UELLAMA_API ULLGaugeWidget : public UUserWidget
 {
     GENERATED_BODY()
 
 public:
-    ULlamaContextGaugeWidget(const FObjectInitializer& ObjectInitializer);
+    ULLGaugeWidget(const FObjectInitializer& ObjectInitializer);
 
     // Call this from your game logic (e.g., HUD Blueprint, PlayerController)
     // to link this UI widget to a specific LlamaComponent instance.
@@ -44,7 +44,7 @@ protected:
 
 private:
     // Pointer to the actual Slate widget instance that does the drawing
-    TSharedPtr<SContextVisualizer> SlateVisualizerWidget;
+    TSharedPtr<SLLContextVisualizer> SlateVisualizerWidget;
 
     // Cached data received from the LlamaComponent's delegate.
     // The Slate widget's attributes will bind to getters for these.

@@ -1,12 +1,12 @@
-// LlamaContextGaugeWidget.cpp
-#include "LlamaContextGaugeWidget.h"
-#include "SContextVisualizer.h"   // The Slate widget header
+// LLGaugeWidget.cpp
+#include "LLGaugeWidget.h"
+#include "SLLContextVisualizer.h"   // The Slate widget header
 #include "LlamaComponent.h"       // The LlamaComponent header
 #include "Components/Border.h"    // Example: If you use a UBorder in BP as a host
 #include "Components/SizeBox.h"   // Example: If you use a USizeBox in BP as a host
 #include "Slate/SObjectWidget.h"  // For SNew(SObjectWidget).TakeWidget() if needed
 
-ULlamaContextGaugeWidget::ULlamaContextGaugeWidget(const FObjectInitializer& ObjectInitializer)
+ULLGaugeWidget::ULLGaugeWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
     // Default values if needed
@@ -15,22 +15,22 @@ ULlamaContextGaugeWidget::ULlamaContextGaugeWidget(const FObjectInitializer& Obj
 }
 
 // This is where UMG asks our UUserWidget to provide its Slate widget counterpart.
-TSharedRef<SWidget> ULlamaContextGaugeWidget::RebuildWidget()
+TSharedRef<SWidget> ULLGaugeWidget::RebuildWidget()
 {
     // If we haven't created our Slate visualizer yet, or if it became invalid, create it now.
     if (!SlateVisualizerWidget.IsValid())
     {
-        SAssignNew(SlateVisualizerWidget, SContextVisualizer)
-            .TotalTokenCapacity(TAttribute<int32>::Create(TAttribute<int32>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedTotalCapacity)))
-            .ContextBlocks(TAttribute<TArray<FContextVisBlock>>::Create(TAttribute<TArray<FContextVisBlock>>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedBlocks)))
-            .KvCacheDecodedTokenCount(TAttribute<int32>::Create(TAttribute<int32>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedKvCacheCount)))
-			.IsStaticWorldInfoUpToDate(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedStaticWorldInfoUpToDate)))
-			.IsLowFrequencyStateUpToDate(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedLowFrequencyStateUpToDate)))
-			.IsLlamaCoreActuallyReady(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedIsLlamaCoreActuallyReady)))
-			.IsLlamaCurrentlyIdle(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedIsLlamaCurrentlyIdle)))
-			.FmsPerTokenDecode(TAttribute<float>::Create(TAttribute<float>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedmsPerTokenDecode)))
-			.FmsPerTokenGenerate(TAttribute<float>::Create(TAttribute<float>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedmsPerTokenGenerate)));
-//		    .PerformanceData(TAttribute<FPerformanceUIPayload>::Create(TAttribute<FPerformanceUIPayload>::FGetter::CreateUObject(this, &ULlamaContextGaugeWidget::GetCachedPerformanceData)));
+        SAssignNew(SlateVisualizerWidget, SLLContextVisualizer)
+            .TotalTokenCapacity(TAttribute<int32>::Create(TAttribute<int32>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedTotalCapacity)))
+            .ContextBlocks(TAttribute<TArray<FContextVisBlock>>::Create(TAttribute<TArray<FContextVisBlock>>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedBlocks)))
+            .KvCacheDecodedTokenCount(TAttribute<int32>::Create(TAttribute<int32>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedKvCacheCount)))
+			.IsStaticWorldInfoUpToDate(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedStaticWorldInfoUpToDate)))
+			.IsLowFrequencyStateUpToDate(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedLowFrequencyStateUpToDate)))
+			.IsLlamaCoreActuallyReady(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedIsLlamaCoreActuallyReady)))
+			.IsLlamaCurrentlyIdle(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedIsLlamaCurrentlyIdle)))
+			.FmsPerTokenDecode(TAttribute<float>::Create(TAttribute<float>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedmsPerTokenDecode)))
+			.FmsPerTokenGenerate(TAttribute<float>::Create(TAttribute<float>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedmsPerTokenGenerate)));
+//		    .PerformanceData(TAttribute<FPerformanceUIPayload>::Create(TAttribute<FPerformanceUIPayload>::FGetter::CreateUObject(this, &ULLGaugeWidget::GetCachedPerformanceData)));
     }
 
     // Important: UUserWidget needs to return a UWidget.
@@ -47,7 +47,7 @@ TSharedRef<SWidget> ULlamaContextGaugeWidget::RebuildWidget()
     // If problems, try: return SNew(SObjectWidget).TakeWidget(SlateVisualizerWidget.ToSharedRef());
 }
 
-void ULlamaContextGaugeWidget::NativeConstruct()
+void ULLGaugeWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
@@ -59,21 +59,21 @@ void ULlamaContextGaugeWidget::NativeConstruct()
     }
 }
 
-void ULlamaContextGaugeWidget::NativeDestruct()
+void ULLGaugeWidget::NativeDestruct()
 {
     // Unbind from the delegate when the widget is destroyed
 	if (TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound()) {
-		TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
+		TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
 	}
     Super::NativeDestruct();
 }
 
-void ULlamaContextGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaComponent)
+void ULLGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaComponent)
 {
     // Unbind from old component, if any
     if (TargetLlamaComponent && TargetLlamaComponent->OnLlamaContextChangedDelegate.IsBound())
     {
-        TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
+        TargetLlamaComponent->OnLlamaContextChangedDelegate.RemoveDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
     }
 
     TargetLlamaComponent = InLlamaComponent;
@@ -81,8 +81,8 @@ void ULlamaContextGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaCompone
     // Bind to new component's delegate
     if (TargetLlamaComponent)
     {
-        TargetLlamaComponent->OnLlamaContextChangedDelegate.AddDynamic(this, &ULlamaContextGaugeWidget::HandleLlamaContextChanged);
-        UE_LOG(LogTemp, Log, TEXT("LlamaContextGaugeWidget: Bound to LlamaComponent %s"), *TargetLlamaComponent->GetName());
+        TargetLlamaComponent->OnLlamaContextChangedDelegate.AddDynamic(this, &ULLGaugeWidget::HandleLlamaContextChanged);
+        UE_LOG(LogTemp, Log, TEXT("LLGaugeWidget: Bound to LlamaComponent %s"), *TargetLlamaComponent->GetName());
 
         // Optional: Request an initial update if the LlamaComponent supports it
         // This would require LlamaComponent to have a method that broadcasts its current state.
@@ -94,13 +94,13 @@ void ULlamaContextGaugeWidget::SetLlamaComponent(ULlamaComponent* InLlamaCompone
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("LlamaContextGaugeWidget: SetLlamaComponent called with null. Unbound."));
+        UE_LOG(LogTemp, Warning, TEXT("LLGaugeWidget: SetLlamaComponent called with null. Unbound."));
     }
 }
 
-void ULlamaContextGaugeWidget::HandleLlamaContextChanged(const FContextVisPayload& NewContextState)
+void ULLGaugeWidget::HandleLlamaContextChanged(const FContextVisPayload& NewContextState)
 {
-    // UE_LOG(LogTemp, Log, TEXT("LlamaContextGaugeWidget: HandleLlamaContextChanged received. Blocks: %d"), NewContextState.Blocks.Num());
+    // UE_LOG(LogTemp, Log, TEXT("LLGaugeWidget: HandleLlamaContextChanged received. Blocks: %d"), NewContextState.Blocks.Num());
 
     // Update cached values that the Slate widget's attributes are bound to
     CachedBlocks = NewContextState.Blocks;
@@ -115,12 +115,12 @@ void ULlamaContextGaugeWidget::HandleLlamaContextChanged(const FContextVisPayloa
 
 //UE_LOG(LogTemp, Log, TEXT("GaugeWidget: HandleContextChanged - Cached: %d %g %g"), bCachedStaticWorldInfoUpToDate, CachedmsPerTokenDecode, CachedmsPerTokenGenerate);
 
-    // The Slate widget (SContextVisualizer) uses TAttributes that poll these GetCached... functions.
+    // The Slate widget (SLLContextVisualizer) uses TAttributes that poll these GetCached... functions.
     // To ensure it repaints with the new data, we might need to tell it its underlying data changed.
     // However, often just changing the UPROPERTY members that TAttributes point to is enough
     // if the TAttributes are set up with FGetter::CreateUObject.
-    // If SContextVisualizer itself has Set... methods that call Invalidate, that's cleaner.
-    // Let's assume SContextVisualizer's SetContextBlocks etc. call Invalidate(EInvalidateWidget::Paint)
+    // If SLLContextVisualizer itself has Set... methods that call Invalidate, that's cleaner.
+    // Let's assume SLLContextVisualizer's SetContextBlocks etc. call Invalidate(EInvalidateWidget::Paint)
     if (SlateVisualizerWidget.IsValid())
     {
         // This direct setting is an alternative to attribute polling if you prefer push over pull
@@ -134,58 +134,58 @@ void ULlamaContextGaugeWidget::HandleLlamaContextChanged(const FContextVisPayloa
 }
 
 // Getter functions for Slate TAttribute binding
-TArray<FContextVisBlock> ULlamaContextGaugeWidget::GetCachedBlocks() const
+TArray<FContextVisBlock> ULLGaugeWidget::GetCachedBlocks() const
 {
     return CachedBlocks;
 }
 
-int32 ULlamaContextGaugeWidget::GetCachedTotalCapacity() const
+int32 ULLGaugeWidget::GetCachedTotalCapacity() const
 {
     return CachedTotalCapacity;
 }
 
-int32 ULlamaContextGaugeWidget::GetCachedKvCacheCount() const
+int32 ULLGaugeWidget::GetCachedKvCacheCount() const
 {
     return CachedKvCacheCount;
 }
 
-bool ULlamaContextGaugeWidget::GetCachedStaticWorldInfoUpToDate() const
+bool ULLGaugeWidget::GetCachedStaticWorldInfoUpToDate() const
 {
     UE_LOG(LogTemp, Verbose, TEXT("GaugeWidget: GetCachedStaticWorldInfoUpToDate() returning %d"), bCachedStaticWorldInfoUpToDate);
     return bCachedStaticWorldInfoUpToDate;
 }
 
-bool ULlamaContextGaugeWidget::GetCachedLowFrequencyStateUpToDate() const
+bool ULLGaugeWidget::GetCachedLowFrequencyStateUpToDate() const
 {
     UE_LOG(LogTemp, Verbose, TEXT("GaugeWidget: GetCachedLowFrequencyStateUpToDate() returning %d"), bCachedLowFrequencyStateUpToDate);
     return bCachedLowFrequencyStateUpToDate;
 }
 
-bool ULlamaContextGaugeWidget::GetCachedIsLlamaCoreActuallyReady() const
+bool ULLGaugeWidget::GetCachedIsLlamaCoreActuallyReady() const
 {
     UE_LOG(LogTemp, Verbose, TEXT("GaugeWidget: GetCachedIsLlamaCoreActuallyReady() returning %d"), bCachedIsLlamaCoreActuallyReady);
     return bCachedIsLlamaCoreActuallyReady;
 }
 
-bool ULlamaContextGaugeWidget::GetCachedIsLlamaCurrentlyIdle() const
+bool ULLGaugeWidget::GetCachedIsLlamaCurrentlyIdle() const
 {
     UE_LOG(LogTemp, Verbose, TEXT("GaugeWidget: GetCachedIsLlamaCurrentlyIdle() returning %d"), bCachedIsLlamaCurrentlyIdle);
     return bCachedIsLlamaCurrentlyIdle;
 }
 
-float ULlamaContextGaugeWidget::GetCachedmsPerTokenDecode() const
+float ULLGaugeWidget::GetCachedmsPerTokenDecode() const
 {
     UE_LOG(LogTemp, Verbose, TEXT("GaugeWidget: GetCachedmsPerTokenDecode() returning %g"), CachedmsPerTokenDecode);
     return CachedmsPerTokenDecode;
 }
 
-float ULlamaContextGaugeWidget::GetCachedmsPerTokenGenerate() const
+float ULLGaugeWidget::GetCachedmsPerTokenGenerate() const
 {
     UE_LOG(LogTemp, Verbose, TEXT("GaugeWidget: GetCachedmsPerTokenGenerate() returning %g"), CachedmsPerTokenGenerate);
     return CachedmsPerTokenGenerate;
 }
 
-void ULlamaContextGaugeWidget::ReleaseSlateResources(bool bReleaseChildren)
+void ULLGaugeWidget::ReleaseSlateResources(bool bReleaseChildren)
 {
     Super::ReleaseSlateResources(bReleaseChildren); // Always call Super
 
@@ -193,5 +193,5 @@ void ULlamaContextGaugeWidget::ReleaseSlateResources(bool bReleaseChildren)
     // This allows the Slate widget to be garbage collected if nothing else holds a reference.
     SlateVisualizerWidget.Reset();
 
-//    UE_LOG(LogTemp, Log, TEXT("LlamaContextGaugeWidget: Slate resources released."));
+//    UE_LOG(LogTemp, Log, TEXT("LLGaugeWidget: Slate resources released."));
 }

@@ -1,5 +1,5 @@
-// LlamaInternal.cpp
-#include "LlamaInternal.h"
+// LLInternal.cpp
+#include "LLInternal.h"
 #include "llama.h"
 #include "common.h"
 
@@ -42,9 +42,9 @@
 
 
     // --- Llama Constructor/Destructor ---
-    LlamaInternal::LlamaInternal() : ThreadHandle([this]() { ThreadRun_LlamaThread(); }) {}
+    LLInternal::LLInternal() : ThreadHandle([this]() { ThreadRun_LlamaThread(); }) {}
 
-    LlamaInternal::~LlamaInternal()
+    LLInternal::~LLInternal()
     {
         bIsRunning = false;
         if (ThreadHandle.joinable())
@@ -59,7 +59,7 @@
     }
     
 #ifdef TRACK_PARALLEL_CONTEXT_TOKENS
-    void LlamaInternal::DebugContext(const FString &Message)
+    void LLInternal::DebugContext(const FString &Message)
     {
 		std::string CTX;
 		for (llama_token tk : MirroredKvCacheTokens) {
@@ -82,7 +82,7 @@
 #endif // TRACK_PARALLEL_CONTEXT_TOKENS
 
     // --- Llama Thread Initialization ---
-    void LlamaInternal::InitializeLlama_LlamaThread(const FString& ModelPathFStr, const FString& InitialSystemPromptFStr, const FString& Systems, const FString& LowFreq /*, other params */)
+    void LLInternal::InitializeLlama_LlamaThread(const FString& ModelPathFStr, const FString& InitialSystemPromptFStr, const FString& Systems, const FString& LowFreq /*, other params */)
     {
         UE_LOG(LogTemp, Log, TEXT("LlamaThread: Initializing Llama... Model: %s"), *ModelPathFStr);
         if (model) { // Already initialized
@@ -282,7 +282,7 @@ MirroredKvCacheTokens.clear();
     }
 
 	// Renamed helper to avoid confusion with the public UpdateContextBlock
-	void LlamaInternal::_TokenizeAndStoreFixedBlockInternal(ELlamaContextBlockType BlockType, const FString& Text, bool bAddBosForThisBlock) {
+	void LLInternal::_TokenizeAndStoreFixedBlockInternal(ELlamaContextBlockType BlockType, const FString& Text, bool bAddBosForThisBlock) {
 		if (!model) return;
 		std::string StdText = TCHAR_TO_UTF8(*Text);
 
@@ -293,7 +293,7 @@ MirroredKvCacheTokens.clear();
 		UE_LOG(LogTemp, Log, TEXT("LlamaThread: Tokenized (internal store) block %d, %d tokens."), (int)BlockType, Block.Tokens.size());
 	}
 
-    void LlamaInternal::ShutdownLlama_LlamaThread()
+    void LLInternal::ShutdownLlama_LlamaThread()
     {
         UE_LOG(LogTemp, Log, TEXT("LlamaThread: Shutting down..."));
         if (sampler_chain_instance) { llama_sampler_free(sampler_chain_instance); sampler_chain_instance = nullptr; }
@@ -306,7 +306,7 @@ MirroredKvCacheTokens.clear();
         UE_LOG(LogTemp, Log, TEXT("LlamaThread: Shutdown complete."));
     }
 
-	void LlamaInternal::UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockTypeToUpdate, const FString& NewTextContent)
+	void LLInternal::UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockTypeToUpdate, const FString& NewTextContent)
 	{
 		if (!ctx || !model) {
 			UE_LOG(LogTemp, Error, TEXT("LlamaThread: UpdateContextBlockAndKV called but Llama not ready."));
@@ -445,7 +445,7 @@ MirroredKvCacheTokens.clear();
 	}
 
     // Invalidates KV cache from a certain token position onwards in the logical sequence
-    void LlamaInternal::InvalidateKVCacheFromPosition(int32_t ValidTokenCountBeforeInvalidation) {
+    void LLInternal::InvalidateKVCacheFromPosition(int32_t ValidTokenCountBeforeInvalidation) {
         if (!ctx) return;
         if (ValidTokenCountBeforeInvalidation < kv_cache_token_cursor) {
             UE_LOG(LogTemp, Log, TEXT("LlamaThread: KV Cache: Removing tokens from pos %d to %d."), ValidTokenCountBeforeInvalidation, kv_cache_token_cursor);
@@ -456,7 +456,7 @@ MirroredKvCacheTokens.resize(ValidTokenCountBeforeInvalidation);
          // If ValidTokenCountBeforeInvalidation >= kv_cache_token_cursor, cache is already valid up to that point or beyond.
     }
 
-	void LlamaInternal::AssembleFullPromptForTurn(
+	void LLInternal::AssembleFullPromptForTurn(
 		const FString& CurrentInputOriginalTextFStr, // Raw text of the current user/tool input for focus
 		const FString& CurrentInputTypeHintFStr,     // "user" or "tool"
 		std::vector<llama_token>& OutFullPromptTokens)
@@ -522,7 +522,7 @@ if (0)    if (CurrentInputTypeHintFStr.Equals(TEXT("user"), ESearchCase::IgnoreC
 		OutFullPromptTokens.insert(OutFullPromptTokens.end(), assistant_prefix_tokens.begin(), assistant_prefix_tokens.end());
 	}
 	
-	void LlamaInternal::LlamaLogContext(FString Label) {
+	void LLInternal::LlamaLogContext(FString Label) {
 		int32_t StablePrefixLength = 0;
 		for (uint8 j = 0; j < (uint8)ELlamaContextBlockType::COUNT; ++j) {
 			if (const FTokenizedContextBlock* Block = FixedContextBlocks.Find((ELlamaContextBlockType)j)) {
@@ -602,7 +602,7 @@ if (0)    if (CurrentInputTypeHintFStr.Equals(TEXT("user"), ESearchCase::IgnoreC
 	}
 
 	
-    void LlamaInternal::DecodeTokensAndSample(std::vector<llama_token>& FullPromptTokensForThisTurn, bool bIsFinalPromptTokenLogits)
+    void LLInternal::DecodeTokensAndSample(std::vector<llama_token>& FullPromptTokensForThisTurn, bool bIsFinalPromptTokenLogits)
     {
         if (!ctx || !model || (FullPromptTokensForThisTurn.size() == 0)) return;
 
@@ -918,7 +918,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 //        LlamaLogContext("DecodeTokensAndSample finished");
     } // End of DecodeTokensAndSample
 
-    void LlamaInternal::AppendTurnToStructuredHistory(const FString& Role, const std::vector<llama_token>& Tokens) {
+    void LLInternal::AppendTurnToStructuredHistory(const FString& Role, const std::vector<llama_token>& Tokens) {
         StructuredConversationHistory.push_back({Role, Tokens});
         // Rebuild the flat ConversationHistoryTokens from StructuredConversationHistory
         ConversationHistoryTokens.clear();
@@ -939,7 +939,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
         }
     }
 
-    void LlamaInternal::PruneConversationHistory() {
+    void LLInternal::PruneConversationHistory() {
         if (!model || !ctx) return;
 
         int32 CurrentFixedTokens = 0;
@@ -992,7 +992,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
         }
     }
 
-	void LlamaInternal::RebuildFlatConversationHistoryTokensFromStructured() {
+	void LLInternal::RebuildFlatConversationHistoryTokensFromStructured() {
 		ConversationHistoryTokens.clear();
 		for (const FConversationTurn& turn : StructuredConversationHistory) {
 			std::string role_prefix_str = "<|im_start|>" + std::string(TCHAR_TO_UTF8(*turn.Role)) + "\n";
@@ -1000,7 +1000,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 			// ... tokenize prefix, turn.Tokens, suffix and append to ConversationHistoryTokens ...
 		}
 	}
-	void LlamaInternal::StopSeqHelper(const FString& stopSeqFStr)
+	void LLInternal::StopSeqHelper(const FString& stopSeqFStr)
 	{
 		std::string stopSeqStdStr = TCHAR_TO_UTF8(*stopSeqFStr);
 		
@@ -1033,7 +1033,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		}
 	}
 
-	bool LlamaInternal::CheckStopSequences() {
+	bool LLInternal::CheckStopSequences() {
 		if (stopSequencesTokens.empty()) return false;
 
 		for (const auto& stop_seq : stopSequencesTokens) {
@@ -1057,7 +1057,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		return false;
 	}
 	
-	std::string LlamaInternal::CleanString(std::string p_str) {
+	std::string LLInternal::CleanString(std::string p_str) {
 		// Add more replacements if needed, e.g., for C_dot (Ċ) if it's a newline token
 		// The original code had C4 8A for newline, which is Ċ (U+010A).
 		// If your model uses a different newline token, adjust accordingly.
@@ -1090,7 +1090,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 	}
 
 	// Helper function to de-tokenize a std::vector<llama_token> and append to a string
-	void LlamaInternal::DetokenizeAndAppend(std::string& TargetString, const std::vector<llama_token>& TokensToDetokenize, const llama_model* ModelHandle) {
+	void LLInternal::DetokenizeAndAppend(std::string& TargetString, const std::vector<llama_token>& TokensToDetokenize, const llama_model* ModelHandle) {
 		if (!ModelHandle) return;
 		const llama_vocab* CurrentVocab = llama_model_get_vocab(ModelHandle);
 		if (!CurrentVocab) return;
@@ -1103,7 +1103,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		}
 	}
 
-	std::string LlamaInternal::AssembleFullContextForDump_LlamaThread() {
+	std::string LLInternal::AssembleFullContextForDump_LlamaThread() {
 		if (!model || !ctx) {
 			return "[Llama not initialized or model/context not available for dump]";
 		}
@@ -1175,7 +1175,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 	}
 
 	// And ensure RequestFullContextDump_LlamaThread calls this correctly:
-	void LlamaInternal::RequestFullContextDump_LlamaThread() { // Renamed
+	void LLInternal::RequestFullContextDump_LlamaThread() { // Renamed
 		std::string context_dump_std_str = AssembleFullContextForDump_LlamaThread();
 		FString context_dump_fstr = UTF8_TO_TCHAR(context_dump_std_str.c_str());
 
@@ -1189,7 +1189,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 		});
 	}
 
-	void LlamaInternal::BroadcastContextVisualUpdate_LlamaThread(int32 nTokens, float sDecode, float sGenerate)
+	void LLInternal::BroadcastContextVisualUpdate_LlamaThread(int32 nTokens, float sDecode, float sGenerate)
 	{
 		if (!model || !ctx) {
 			UE_LOG(LogTemp, Warning, TEXT("LlamaThread: Cannot broadcast context visual update, model/ctx/owner not ready."));
@@ -1375,7 +1375,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
   
   	}
 
-	void LlamaInternal::ProcessInputAndGenerate_LlamaThread(
+	void LLInternal::ProcessInputAndGenerate_LlamaThread(
 		const FString& InputTextFStr,             // The raw text from the user or tool response
 		const FString& HighFrequencyContextTextFStr, // Raw HFS text
 		const FString& InputTypeHintFStr          // "user", "tool" (for formatting the InputTextFStr)
@@ -1486,7 +1486,7 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
 	}
 
     // --- Main Llama Thread Loop ---
-    void LlamaInternal::ThreadRun_LlamaThread()
+    void LLInternal::ThreadRun_LlamaThread()
     {
         // Initial wait for InitializeLlama_LlamaThread to be called
         while (bIsRunning && (!model || !ctx)) {

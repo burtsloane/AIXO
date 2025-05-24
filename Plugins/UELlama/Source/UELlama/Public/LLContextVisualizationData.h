@@ -7,7 +7,7 @@
 
 #include "CoreMinimal.h"
 #include "Styling/SlateColor.h" // For FLinearColor
-#include "ContextVisualizationData.generated.h" // For UENUM/USTRUCT if exposed to BP
+#include "LLContextVisualizationData.generated.h" // For UENUM/USTRUCT if exposed to BP
 
 // Enum to categorize different parts of the LLM context for visualization
 UENUM(BlueprintType)

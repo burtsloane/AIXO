@@ -9,9 +9,9 @@
 #include <mutex>
 #include "llama.h"
 
-#include "ContextVisualizationData.h"
+#include "LLContextVisualizationData.h"
 
-#include "LlamaInternal.generated.h"
+#include "LLInternal.generated.h"
 
 //#define TRACK_PARALLEL_CONTEXT_TOKENS
 
@@ -70,11 +70,11 @@ enum class ELlamaContextBlockType : uint8
     COUNT UMETA(Hidden) // For iterating if needed
 };
 
-class LlamaInternal
+class LLInternal
 {
 public:
-	LlamaInternal();
-	~LlamaInternal();
+	LLInternal();
+	~LLInternal();
 
 	// MODIFIED/NEW API for Llama thread
 	void InitializeLlama_LlamaThread(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq /*, other params */);
