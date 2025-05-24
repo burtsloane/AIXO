@@ -102,6 +102,9 @@ AVisualTestHarnessActor::AVisualTestHarnessActor()
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to find /Engine/EngineResources/WhiteSquareTexture!"));
     }
+    
+    LlamaAIXOComponent = CreateDefaultSubobject<ULlamaComponent>(TEXT("LlamaAIXOComponentInstance"));
+    LlamaAIXOComponent->PathToModel = PathToModel;
 }
 
 AVisualTestHarnessActor::~AVisualTestHarnessActor()
@@ -111,7 +114,7 @@ AVisualTestHarnessActor::~AVisualTestHarnessActor()
 
 void AVisualTestHarnessActor::BeginPlay()
 {
-    Super::BeginPlay();
+	Super::BeginPlay();
 
     // Get the player controller
     APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
@@ -119,92 +122,6 @@ void AVisualTestHarnessActor::BeginPlay()
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to get PlayerController in VisualTestHarnessActor::BeginPlay."));
         return;
-    }
-    
-    // Create the GameManager first
-    SubmarineGameManager = GetWorld()->SpawnActor<ASubmarineGameManager>(ASubmarineGameManager::StaticClass());
-    if (!SubmarineGameManager)
-    {
-        UE_LOG(LogTemp, Error, TEXT("Failed to create SubmarineGameManager in BeginPlay!"));
-        return;
-    }
-    SubmarineGameManager->HarnessActor = this;
-    
-    // Log the state of the existing component if it exists
-    if (LlamaAIXOComponent)
-    {
-        UE_LOG(LogTemp, Log, TEXT("Found existing LlamaAIXOComponent in BeginPlay"));
-        UE_LOG(LogTemp, Log, TEXT("  Component Name: %s"), *LlamaAIXOComponent->GetName());
-        UE_LOG(LogTemp, Log, TEXT("  Component PathToModel: %s"), *LlamaAIXOComponent->PathToModel);
-        UE_LOG(LogTemp, Log, TEXT("  Actor PathToModel: %s"), *PathToModel);
-        
-        // Add initialization state checks
-        UE_LOG(LogTemp, Log, TEXT("  Component IsLlamaReady: %s"), LlamaAIXOComponent->IsLlamaReady() ? TEXT("true") : TEXT("false"));
-        UE_LOG(LogTemp, Log, TEXT("  Component IsLlamaBusy: %s"), LlamaAIXOComponent->IsLlamaBusy() ? TEXT("true") : TEXT("false"));
-        
-        // If the actor's PathToModel is empty but the component's isn't, update the actor
-        if (PathToModel.IsEmpty() && !LlamaAIXOComponent->PathToModel.IsEmpty())
-        {
-            UE_LOG(LogTemp, Log, TEXT("Updating actor's PathToModel from component's value"));
-            PathToModel = LlamaAIXOComponent->PathToModel;
-        }
-        // If both are empty, that's an error
-        else if (PathToModel.IsEmpty() && LlamaAIXOComponent->PathToModel.IsEmpty())
-        {
-            UE_LOG(LogTemp, Error, TEXT("Both actor and component PathToModel are empty! LlamaComponent will not initialize."));
-        }
-        // If they're different, log a warning but use the component's value
-        else if (PathToModel != LlamaAIXOComponent->PathToModel)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Actor and component PathToModel differ! Using component's value: %s"), *LlamaAIXOComponent->PathToModel);
-            PathToModel = LlamaAIXOComponent->PathToModel;
-        }
-
-        // Initialize the component if it's not already initialized
-        if (!LlamaAIXOComponent->IsLlamaReady() && !LlamaAIXOComponent->IsLlamaBusy() && !LlamaAIXOComponent->PathToModel.IsEmpty())
-        {
-            UE_LOG(LogTemp, Log, TEXT("Initializing existing LlamaAIXOComponent with path: %s"), *LlamaAIXOComponent->PathToModel);
-            LlamaAIXOComponent->Initialize(LlamaAIXOComponent->PathToModel);
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Log, TEXT("Creating new LlamaAIXOComponent, PathToModel='%s'"), *PathToModel);
-        LlamaAIXOComponent = NewObject<ULlamaComponent>(this, TEXT("LlamaAIXOComponentInstance"));
-        if (LlamaAIXOComponent)
-        {
-            LlamaAIXOComponent->RegisterComponent();
-            LlamaAIXOComponent->PathToModel = PathToModel;
-            UE_LOG(LogTemp, Log, TEXT("LlamaAIXOComponent created and registered, PathToModel='%s'"), *LlamaAIXOComponent->PathToModel);
-            
-            // Initialize the component with the model path
-            if (!PathToModel.IsEmpty())
-            {
-                UE_LOG(LogTemp, Log, TEXT("Calling Initialize on LlamaAIXOComponent with path: %s"), *PathToModel);
-                LlamaAIXOComponent->Initialize(PathToModel);
-                UE_LOG(LogTemp, Log, TEXT("LlamaAIXOComponent->Initialize called"));
-            }
-            else
-            {
-                UE_LOG(LogTemp, Error, TEXT("PathToModel is empty! LlamaComponent will not initialize."));
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("Failed to create LlamaAIXOComponent in BeginPlay!"));
-            return;
-        }
-    }
-    
-    // Set up the game interface
-    if (LlamaAIXOComponent)
-    {
-        UE_LOG(LogTemp, Log, TEXT("Setting game interface on LlamaAIXOComponent"));
-        LlamaAIXOComponent->SetGameInterface(SubmarineGameManager);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("LlamaAIXOComponent is null in VisualTestHarnessActor::BeginPlay!"));
     }
 
     // Set up UI input mode
@@ -321,9 +238,8 @@ void AVisualTestHarnessActor::BeginPlay()
 	
     if (LlamaAIXOComponent)
     {
-		ASubmarineGameManager* GameManager = GetWorld()->SpawnActor<ASubmarineGameManager>(ASubmarineGameManager::StaticClass());
-		GameManager->HarnessActor = this;
-    	LlamaAIXOComponent->SetGameInterface(GameManager);
+        // Call your custom initialization function on the component
+        LlamaAIXOComponent->ActivateLlamaComponent(this); // Pass 'this' (the harness actor)
     }
     else
     {
@@ -338,65 +254,89 @@ void AVisualTestHarnessActor::BeginPlay()
 
 void AVisualTestHarnessActor::Tick(float DeltaTime)
 {
-    Super::Tick(DeltaTime);
+	Super::Tick(DeltaTime);
 
     UpdateStateDisplay();
 
     if (RenderContext && VizManager)
     {
-        PWR_PowerPropagation::PropagatePower(VizManager->Segments, VizManager->Junctions);
+		PWR_PowerPropagation::PropagatePower(VizManager->Segments, VizManager->Junctions);
 
         if (RenderContext->BeginDrawing()) 
         {
-            // fill with white
-            FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
-            FBox2D r;
-            r.Min.X = 0;
-            r.Min.Y = 0;
-            r.Max.X = VisTextureSize.X;
-            r.Max.Y = VisTextureSize.Y;
-            RenderContext->DrawRectangle(r, FLinearColor::White, true);
+        	// fill with white
+			FGeometry ImageGeometry = VisualizationImage->GetCachedGeometry();
+			FBox2D r;
+			r.Min.X = 0;
+			r.Min.Y = 0;
+			r.Max.X = VisTextureSize.X;
+			r.Max.Y = VisTextureSize.Y;
+			RenderContext->DrawRectangle(r, FLinearColor::White, true);
 
             // Apply view transform
             RenderContext->PushTransform(FTransform2D(ViewScale, ViewOffset));
 
-            r.Min.X = VisExtent.Min.X;
-            r.Min.Y = VisExtent.Min.Y;
-            r.Max.X = VisExtent.Max.X;
-            r.Max.Y = VisExtent.Max.Y;
-            RenderContext->DrawRectangle(r, FLinearColor(0.9f, 0.9f, 0.9f), false);
+			r.Min.X = VisExtent.Min.X;
+			r.Min.Y = VisExtent.Min.Y;
+			r.Max.X = VisExtent.Max.X;
+			r.Max.Y = VisExtent.Max.Y;
+			RenderContext->DrawRectangle(r, FLinearColor(0.9f, 0.9f, 0.9f), false);
 
-            // show the guide marks
-            for (const auto& Entry : GridMarkerDefinitions)
-            {
-                FString Key = Entry.Key;
-                float Value = Entry.Value;
+	// show the guide marks
+	for (const auto& Entry : GridMarkerDefinitions)
+	{
+		FString Key = Entry.Key;
+		float Value = Entry.Value;
 
-                // Access key and value
-                if (Key[0] == 'Y') {
-                    r.Min.X = VisExtent.Min.X;
-                    r.Min.Y = Value;
-                    r.Max.X = VisExtent.Max.X;
-                    r.Max.Y = Value+1;
-                    RenderContext->DrawRectangle(r, FLinearColor(0.8f, 0.8f, 0.8f), false);
-                } else if (Key[0] == 'X') {
-                    r.Min.X = Value;
-                    r.Min.Y = VisExtent.Min.Y;
-                    r.Max.X = Value+1;
-                    r.Max.Y = VisExtent.Max.Y;
-                    RenderContext->DrawRectangle(r, FLinearColor(0.8f, 0.8f, 0.8f), false);
-                }
-            }
+		// Access key and value
+		if (Key[0] == 'Y') {
+			r.Min.X = VisExtent.Min.X;
+			r.Min.Y = Value;
+			r.Max.X = VisExtent.Max.X;
+			r.Max.Y = Value+1;
+			RenderContext->DrawRectangle(r, FLinearColor(0.8f, 0.8f, 0.8f), false);
+		} else if (Key[0] == 'X') {
+			r.Min.X = Value;
+			r.Min.Y = VisExtent.Min.Y;
+			r.Max.X = Value+1;
+			r.Max.Y = VisExtent.Max.Y;
+			RenderContext->DrawRectangle(r, FLinearColor(0.8f, 0.8f, 0.8f), false);
+		}
+	}
+
+	// show all CH rectangles
+//	for (ICommandHandler* Handler : CmdDistributor.GetCommandHandlers())
+//	{
+//		if (Handler)
+//		{
+//			ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();		// downcast without RTTI
+//			if (Junction)
+//			{
+//				Junction->RenderHighlights(*RenderContext);
+//			}
+//		}
+//	}
 
             VizManager->Render(*RenderContext);
+
             RenderContext->PopTransform();
+
             RenderContext->EndDrawing(); 
 
-            if (DiagramSlate.IsValid())
-            {
-                DiagramSlate->InvalidateFast();
-            }
+			if (DiagramSlate.IsValid())
+				DiagramSlate->InvalidateFast();
+		}
+        else
+        {
+            // Add Log: Error if BeginDrawing fails
+            UE_LOG(LogTemp, Error, TEXT("Tick: RenderContext->BeginDrawing() failed!"));
         }
+    }
+    else 
+    {
+        // Add Log: Indicate why rendering might not be happening
+        if (!RenderContext) UE_LOG(LogTemp, Warning, TEXT("Tick: RenderContext is null."));
+        if (!VizManager) UE_LOG(LogTemp, Warning, TEXT("Tick: VizManager is null."));
     }
 
     CmdDistributor.TickAll(DeltaTime);
@@ -429,12 +369,14 @@ void AVisualTestHarnessActor::InitializeVisualization()
         UE_LOG(LogTemp, Error, TEXT("InitializeVisualization: Failed to create VisRenderTarget!"));
         return;
     }
+    // Add Log: Confirm render target format/size
     UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: VisRenderTarget created (Size: %d x %d)."), static_cast<int32>(VisTextureSize.X), static_cast<int32>(VisTextureSize.Y));
     VisRenderTarget->InitCustomFormat(VisTextureSize.X, VisTextureSize.Y, PF_B8G8R8A8, true); 
     VisRenderTarget->UpdateResourceImmediate(true);
 
     if (VisualizationImage)
     {
+        // Add Log: Confirm assigning render target to image
         UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: Assigning VisRenderTarget to VisualizationImage."));
         VisualizationImage->SetBrushResourceObject(VisRenderTarget.Get());
     }
@@ -443,6 +385,7 @@ void AVisualTestHarnessActor::InitializeVisualization()
         UE_LOG(LogTemp, Warning, TEXT("InitializeVisualization: VisualizationImage is null!"));
     }
 
+    // Add Log: Check SolidColorTexture validity
     if (!SolidColorTexture)
     {
         UE_LOG(LogTemp, Error, TEXT("InitializeVisualization: SolidColorTexture is NOT valid!"));
@@ -455,59 +398,48 @@ void AVisualTestHarnessActor::InitializeVisualization()
     RenderContext = MakeUnique<UnrealRenderingContext>(GetWorld(), VisRenderTarget.Get(), SolidColorTexture.Get());
     UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: RenderContext created."));
 
-    if (SubDiagramHost && RenderContext)
-    {
-        DiagramSlate = SNew(SSubDiagram)
-                       .OwnerActor(this)
-                       .Verts(RenderContext->GetPresentedVertices())
-                       .Indices(RenderContext->GetPresentedIndices());
+	if (SubDiagramHost && RenderContext)
+	{
+		DiagramSlate = SNew(SSubDiagram)
+					   .OwnerActor(this)
+					   .Verts(RenderContext->GetPresentedVertices())
+					   .Indices(RenderContext->GetPresentedIndices());
 
-        SubDiagramHost->SetContent(DiagramSlate.ToSharedRef());
+		SubDiagramHost->SetContent(DiagramSlate.ToSharedRef());
 
-        UE_LOG(LogTemp, Log, TEXT("DiagramSlate created: verts=%d, indices=%d"),
-               RenderContext->GetPresentedVertices()->Num(),
-               RenderContext->GetPresentedIndices()->Num());
-    }
+		UE_LOG(LogTemp, Log, TEXT("DiagramSlate created: verts=%d"),
+			   RenderContext->GetPresentedVertices()->Num());
+	}
 
     if (VizManager) {
-        int32 JunctionCount = 0;
-        int32 SegmentCount = 0;
-        
         // Add command handlers
         for (ICommandHandler* Handler : CmdDistributor.GetCommandHandlers())
         {
             if (Handler)
             {
-                ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();
+                ICH_PowerJunction* Junction = Handler->GetAsPowerJunction();		// downcast without RTTI
                 if (Junction)
                 {
-//                    UE_LOG(LogTemp, Log, TEXT("Adding junction %s at (%.1f, %.1f)"), 
-//                           *Junction->GetSystemName(), Junction->X, Junction->Y);
                     VizManager->AddJunction(Junction);
-                    Junction->InitializeVisualElements();
+                    Junction->InitializeVisualElements(); // Ensure visuals are initialized
                     Junction->CalculateExtentsVisualElements();
-                    JunctionCount++;
                 }
             }
         }
-        
-        for (PWR_PowerSegment* Segment : CmdDistributor.GetSegments())
-        {
-            if (Segment)
-            {
-//                UE_LOG(LogTemp, Log, TEXT("Adding segment %s"), *Segment->GetName());
-                VizManager->AddSegment(Segment);
-                SegmentCount++;
-            }
-        }
-        
-        UE_LOG(LogTemp, Log, TEXT("Added %d junctions and %d segments to VizManager"), JunctionCount, SegmentCount);
+    	for (PWR_PowerSegment *Segment : CmdDistributor.GetSegments())
+    	{
+    		if (Segment)
+    		{
+    			VizManager->AddSegment(Segment);
+    		}
+    	}
     }
     else 
     {
-        UE_LOG(LogTemp, Error, TEXT("InitializeVisualization: VizManager is unexpectedly null after creation!"));
+         UE_LOG(LogTemp, Error, TEXT("InitializeVisualization: VizManager is unexpectedly null after creation!"));
     }
     
+    // Add Log: Indicate visualization initialization finished
     UE_LOG(LogTemp, Log, TEXT("InitializeVisualization: Finished adding junctions to VizManager."));
     AddLogMessage(TEXT("Visualization Initialized."));
 }
@@ -1479,6 +1411,7 @@ sol->SetSelectedPort(-1);
     AddLogMessage(TEXT("Command Handlers Initialized."));
 }
 
+// for blueprints
 void AVisualTestHarnessActor::ProcessCommandString(const FString& Command)
 {
     UE_LOG(LogTemp, Log, TEXT("Processing Command: %s"), *Command);
@@ -1498,36 +1431,5 @@ TArray<FString> AVisualTestHarnessActor::QueryEntireStateList()
 TArray<FString> AVisualTestHarnessActor::GetSystemNotifications()
 {
     return CmdDistributor.GetSystemNotifications();
-}
-
-bool AVisualTestHarnessActor::InitializeLlamaComponent()
-{
-    if (!LlamaAIXOComponent)
-    {
-        UE_LOG(LogTemp, Error, TEXT("InitializeLlamaComponent: LlamaAIXOComponent is null!"));
-        return false;
-    }
-
-    if (LlamaAIXOComponent->IsLlamaReady())
-    {
-        UE_LOG(LogTemp, Log, TEXT("InitializeLlamaComponent: Component is already initialized"));
-        return true;
-    }
-
-    if (LlamaAIXOComponent->IsLlamaBusy())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("InitializeLlamaComponent: Component is busy, cannot initialize now"));
-        return false;
-    }
-
-    if (LlamaAIXOComponent->PathToModel.IsEmpty())
-    {
-        UE_LOG(LogTemp, Error, TEXT("InitializeLlamaComponent: PathToModel is empty!"));
-        return false;
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("InitializeLlamaComponent: Initializing component with path: %s"), *LlamaAIXOComponent->PathToModel);
-    LlamaAIXOComponent->Initialize(LlamaAIXOComponent->PathToModel);
-    return true;
 }
 

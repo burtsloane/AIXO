@@ -11,14 +11,14 @@
 
 static const FSoftObjectPath TinyFontPath(TEXT("/Game/Fonts/Roboto-BoldCondensed.Roboto-BoldCondensed"));
 
-struct FTouchInfo
+struct FSDTouchInfo	// don't know why this is different than FTouchInfo
 {
     int32   PointerId;
     int32   UserId;
     FVector2f LocalPos;
 };
 
-TMap<int32 /*PointerId*/, FTouchInfo> ActiveTouches;   // member in the .cpp
+TMap<int32 /*PointerId*/, FSDTouchInfo> ActiveTouches;   // member in the .cpp
 
 /*
 Important notes
@@ -260,7 +260,7 @@ FReply SSubDiagram::OnTouchMoved(const FGeometry& MyGeom,
                                  const FPointerEvent& Touch)
 {
     const int32 Id = Touch.GetPointerIndex();
-    if (FTouchInfo* Info = ActiveTouches.Find(Id))
+    if (FSDTouchInfo* Info = ActiveTouches.Find(Id))
     {
         Info->LocalPos =
             MyGeom.AbsoluteToLocal(Touch.GetScreenSpacePosition());

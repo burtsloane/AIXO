@@ -10,7 +10,6 @@
 #include "Components/NativeWidgetHost.h"
 #include "ICH_PowerJunction.h"
 #include "PWR_PowerSegment.h"
-#include "SubmarineGameManager.h"
 #include "VisualTestHarnessActor.generated.h"
 
 // Forward Declarations
@@ -26,6 +25,16 @@ class UInputAction;
 class ULlamaComponent;
 class VisualizationManager;
 struct FInputActionValue;
+
+// Touch tracking struct
+struct FTouchInfo
+{
+	int32 PointerId;
+	FVector2D InitialPosition;  // Initial touch position in world space
+	FVector2D CurrentPosition;  // Current touch position in world space
+	FVector2D InitialPanOffset; // ViewOffset when touch started
+	float InitialScale;         // ViewScale when touch started
+};
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHarnessAndLlamaReady, ULlamaComponent*, LlamaComponent);
 
@@ -169,23 +178,9 @@ protected:
 	void MakeConnectingSegment(const FString& Name, ICH_PowerJunction *JCT, int32 JCT_side, int32 JCT_offset, ICH_PowerJunction *SS, int32 SS_side, int32 SS_offset);
 
 public:
-	// Command processing passthrough - moved to cpp
-	UFUNCTION(BlueprintCallable, Category = "Commands")
-	void ProcessCommandString(const FString& Command);
-
     UPROPERTY(BlueprintAssignable, Category = "AIXO")
     FOnHarnessAndLlamaReady OnHarnessAndLlamaReady;
     
-	// State query passthrough - moved to cpp
-	UFUNCTION(BlueprintCallable, Category = "Commands")
-	TArray<FString> GetAvailableCommandsList();
-
-	UFUNCTION(BlueprintCallable, Category = "Commands")
-	TArray<FString> QueryEntireStateList();
-
-	UFUNCTION(BlueprintCallable, Category = "Commands")
-	TArray<FString> GetSystemNotifications();
-
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AIXO Components", meta = (AllowPrivateAccess = "true"))
     TObjectPtr<ULlamaComponent> LlamaAIXOComponent;
 
@@ -196,9 +191,6 @@ private:
 	// Hold loaded junctions/segments alive when JSON is imported
 	TArray<TUniquePtr<ICH_PowerJunction>> PersistentJunctions;
 	TArray<TUniquePtr<PWR_PowerSegment>>  PersistentSegments;
-
-	ASubmarineGameManager *SubmarineGameManager;
-//	SubmarineGameManager = GetWorld()->SpawnActor<ASubmarineGameManager>(ASubmarineGameManager::StaticClass());
 
 public:
 	UPROPERTY(EditDefaultsOnly, Category="UI")
@@ -224,16 +216,6 @@ public:
 	UFUNCTION()
 	void OnZoomOutButtonClicked();
 
-	// Touch tracking struct
-	struct FTouchInfo
-	{
-		int32 PointerId;
-		FVector2D InitialPosition;  // Initial touch position in world space
-		FVector2D CurrentPosition;  // Current touch position in world space
-		FVector2D InitialPanOffset; // ViewOffset when touch started
-		float InitialScale;         // ViewScale when touch started
-	};
-
 	// Touch gesture tracking
 	bool bIsPanning = false;
 	bool bIsPinching = false;
@@ -246,9 +228,22 @@ public:
 	void ApplyPan(const FVector2D& Delta, float Scale);
 	bool IsPointInEmptySpace(const FVector2D& Point) const;
 
-	friend class VisualizationManager;
+public:
+// callls from blueprints
+	// Command processing passthrough - moved to cpp
+	UFUNCTION(BlueprintCallable, Category = "Commands")
+	void ProcessCommandString(const FString& Command);
 
-	// Add manual initialization function
-	UFUNCTION(BlueprintCallable, Category = "AIXO|Llama")
-	bool InitializeLlamaComponent();
+	// State query passthrough - moved to cpp
+	UFUNCTION(BlueprintCallable, Category = "Commands")
+	TArray<FString> GetAvailableCommandsList();
+
+	UFUNCTION(BlueprintCallable, Category = "Commands")
+	TArray<FString> QueryEntireStateList();
+
+	UFUNCTION(BlueprintCallable, Category = "Commands")
+	TArray<FString> GetSystemNotifications();
+
+public:
+	friend class VisualizationManager;
 }; 

@@ -2,12 +2,13 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
-#include "Modules/ModuleManager.h"
+#include <CoreMinimal.h>
+#include <Modules/ModuleManager.h>
 
-class FUELlamaModule : public IModuleInterface
+class FUELlamaModule final : public IModuleInterface
 {
 public:
-    virtual void StartupModule() override;
-    virtual void ShutdownModule() override;
+  virtual void StartupModule() override;
+  virtual void ShutdownModule() override;
+
 };

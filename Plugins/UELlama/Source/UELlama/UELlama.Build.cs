@@ -17,9 +17,7 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
             "Slate",      // For SWidget and higher-level Slate functionalities
             "SlateCore",  // For core Slate types like SLeafWidget, EVisibility, brushes, etc.
 			"Json",
-            "JsonUtilities",
-            "InputCore",
-            "HTTP"
+            "JsonUtilities"
         });
 
         // Private dependencies (if any specific to the plugin's implementation details)
@@ -27,10 +25,8 @@ public class UELlama : ModuleRules // Ensure this class name matches your actual
             // "Slate", "SlateCore", // Add if your plugin uses Slate UI directly
             "RHI" // for GDynamicRHI and RHIGetGPUFrameCycles
         });
-
-        // Remove AIXO dependencies
-        // PrivateDependencyModuleNames.AddRange(new string[] { "AIXO" });
-        // PrivateIncludePathModuleNames.AddRange(new string[] { "AIXO" });
+//		PrivateDependencyModuleNames.AddRange(new string[] { "AIXO" /* Add your game module name here */ });
+		PrivateIncludePathModuleNames.AddRange(new string[] { "AIXO" });
 
         // Define the base path to your ThirdParty llama.cpp directory
         string ThirdPartyPath = Path.Combine(ModuleDirectory, "ThirdParty");

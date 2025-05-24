@@ -3,6 +3,7 @@
 #include "PWR_BusTapJunction.h"
 
 ASubmarineState::ASubmarineState() {
+    CommandDispatcher = new CommandDistributor();
 }
 void ASubmarineState::BeginPlay() {
 	Super::BeginPlay();
@@ -103,6 +104,18 @@ void ASubmarineState::Tick(float DeltaTime)
     for (auto& Handler : Systems)
     {
         Handler->Tick(DeltaTime);
+    }
+}
+
+void ASubmarineState::ExecuteCommandLine(const FString& Line)
+{
+    if (CommandDispatcher->ProcessCommand(Line) == ECommandResult::Handled)
+    {
+        LogMessage("✓ " + Line);
+    }
+    else
+    {
+        LogMessage("✗ " + Line + TEXT(" → ") + "ERROR!!!");
     }
 }
 
