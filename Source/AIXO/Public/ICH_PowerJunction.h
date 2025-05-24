@@ -655,4 +655,5 @@ public:
     friend class VisualizationManager;
     friend class UPowerGridLoader;
     friend class ULlamaComponent;
+	friend class AVisualTestHarnessActor;
 };

@@ -238,8 +238,11 @@ void AVisualTestHarnessActor::BeginPlay()
 	
     if (LlamaAIXOComponent)
     {
-        // Call your custom initialization function on the component
-        LlamaAIXOComponent->ActivateLlamaComponent(this); // Pass 'this' (the harness actor)
+		FString SystemsContextBlock = MakeSystemsBlock();
+		FString LowFreqContextBlock = MakeStatusBlock();
+		SystemsContextBlockRecent = SystemsContextBlock;
+		LowFreqContextBlockRecent = LowFreqContextBlock;
+        LlamaAIXOComponent->ActivateLlamaComponent(SystemsContextBlock, LowFreqContextBlock);
     }
     else
     {
@@ -249,6 +252,8 @@ void AVisualTestHarnessActor::BeginPlay()
 	if (LlamaAIXOComponent /*&& LlamaAIXOComponent->IsLlamaCoreReady()*/) // Assuming IsLlamaCoreReady flag
 	{
 		OnHarnessAndLlamaReady.Broadcast(LlamaAIXOComponent);
+		//
+        LlamaAIXOComponent->OnToolCallDetected.AddDynamic(this, &AVisualTestHarnessActor::ProcessToolCall);
 	}
 }
 
@@ -340,6 +345,40 @@ void AVisualTestHarnessActor::Tick(float DeltaTime)
     }
 
     CmdDistributor.TickAll(DeltaTime);
+
+    if (LlamaAIXOComponent->IsLlamaReady()) {
+        FString CurrentSystemsBlock = MakeSystemsBlock();
+        if (SystemsContextBlockRecent != CurrentSystemsBlock) {
+            bPendingStaticWorldInfoUpdate = true;
+            PendingStaticWorldInfoText = CurrentSystemsBlock;
+        }
+
+        FString CurrentLowFreqBlock = MakeStatusBlock();
+        if (LowFreqContextBlockRecent != CurrentLowFreqBlock) {
+            bPendingLowFrequencyStateUpdate = true;
+            PendingLowFrequencyStateText = CurrentLowFreqBlock;
+        }
+
+        // Attempt to send pending updates if Llama is not busy
+        if (!LlamaAIXOComponent->IsLlamaBusy()) { // Check the flag
+            if (bPendingStaticWorldInfoUpdate) {
+                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: StaticWorldInfo changed. Queuing update NOW."));
+                LlamaAIXOComponent->UpdateContextBlock(ELlamaContextBlockType::StaticWorldInfo, PendingStaticWorldInfoText);
+                SystemsContextBlockRecent = PendingStaticWorldInfoText; // Mark as sent
+                bPendingStaticWorldInfoUpdate = false;
+            }
+            if (bPendingLowFrequencyStateUpdate) {
+                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: LowFrequencyState changed. Queuing update NOW."));
+                LlamaAIXOComponent->UpdateContextBlock(ELlamaContextBlockType::LowFrequencyState, PendingLowFrequencyStateText);
+                LowFreqContextBlockRecent = PendingLowFrequencyStateText; // Mark as sent
+                bPendingLowFrequencyStateUpdate = false;
+            }
+        } else {
+            if (bPendingStaticWorldInfoUpdate || bPendingLowFrequencyStateUpdate) {
+                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Llama is busy, context updates deferred."));
+            }
+        }
+    }
 }
 
 void AVisualTestHarnessActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -1433,3 +1472,467 @@ TArray<FString> AVisualTestHarnessActor::GetSystemNotifications()
     return CmdDistributor.GetSystemNotifications();
 }
 
+#pragma mark Context Blocks
+FString AVisualTestHarnessActor::MakeCommandHandlerString(ICommandHandler *ich) {
+	FString str;
+	ICommandHandler *FoundHandler = ich;
+	if (FoundHandler)
+	{
+		const ICH_PowerJunction *pj = FoundHandler->GetAsPowerJunction();
+		str += "**SYSTEM:" + FoundHandler->GetSystemName() + "\n";
+		if (pj && pj->IsPowerSource()) str += "POWER_SOURCE:true\n";
+		else str += "POWER_SOURCE:false\n";
+		if (pj) {
+			switch (pj->GetStatus()) {
+				case EPowerJunctionStatus::NORMAL:
+					str += "STATUS:NORMAL\n";
+					break;
+				case EPowerJunctionStatus::DAMAGED50:
+					str += "STATUS:50%% DAMAGED\n";
+					break;
+				case EPowerJunctionStatus::DAMAGED100:
+					str += "STATUS:DAMAGED\n";
+					break;
+				case EPowerJunctionStatus::DESTROYED:
+					str += "STATUS:DESTROYED\n";
+					break;
+			}
+			if (pj->IsPowerSource()) {
+				str += FString::Printf(TEXT("POWER_AVAILABLE:%g\n"), pj->GetPowerAvailable());
+			} else {
+				str += FString::Printf(TEXT("POWER_USAGE:%g\n"), pj->GetCurrentPowerUsage());
+			}
+			str += FString::Printf(TEXT("NOISE:%g\n"), pj->GetCurrentNoiseLevel());
+		}
+		FString gd = FoundHandler->GetSystemGuidance();
+		if (gd.Len() > 0) str += "GUIDANCE: " + gd + "\n";
+		FString st = FoundHandler->GetSystemStatus();
+		if (st.Len() > 0) str += "STATUS: " + st + "\n";
+		TArray<FString> cm = FoundHandler->GetAvailableCommands();
+		if (cm.Num() > 0) {
+			str += "*COMMANDS:\n";
+			for (FString& s : cm) str += s + "\n";
+		}
+		TArray<FString> qr = FoundHandler->GetAvailableQueries();
+		if (qr.Num() > 0) {
+			str += "*QUERIES:";
+			for (FString& s : qr) str += " " + s;
+			str += "\n";
+		}
+		//
+		if (pj) {
+			str += "*PORTS:\n";
+			for (int i=0; i<pj->Ports.Num(); i++) {
+				PWR_PowerSegment *seg = pj->Ports[i];
+				str += seg->GetName();
+				str += ":";
+				ICH_PowerJunction *other_junction = seg->GetJunctionA();
+				int32 other_pin = seg->GetPortA();
+				if (pj == other_junction) {
+					other_junction = seg->GetJunctionB();
+					other_pin = seg->GetPortB();
+				}
+				str += other_junction->GetSystemName();
+				str += ".";
+				str += FString::Printf(TEXT("%d"), other_pin);
+				str += "\n";
+			}
+		}
+		//
+		str += "*STATE:\n";
+		str += FString::Join(FoundHandler->QueryEntireState(), TEXT("\n"));
+		str += "\n";
+		//
+		if (pj) {
+			str += "*POWER_PATH:";
+			const TArray<PWR_PowerSegment*> PPath = pj->GetPathToSourceSegments();
+			const TArray<ICH_PowerJunction*> JPath = pj->GetPathToSourceJunction();
+			for (int i=0; i < JPath.Num(); i++) {
+				if (i > 0) str += ":";
+				str += JPath[i]->GetSystemName();
+				if (PPath.Num() > i) str += ":" + PPath[i]->GetName();
+				else if (PPath.Num() < i) str += "<PATH MISSING>";
+			}
+			str += "\n";
+		}
+		//
+		if (pj) {
+			str += "*PORT_STATE:\n";
+			for (int i=0; i<pj->Ports.Num(); i++) {
+				const PWR_PowerSegment *seg = pj->Ports[i];
+				if (!pj->IsPortEnabled(i)) str += "#";
+				switch (seg->GetStatus()) {
+					case EPowerSegmentStatus::NORMAL:
+						str += "STATUS:NORMAL";
+						break;
+					case EPowerSegmentStatus::SHORTED:
+						str += "STATUS:SHORTED";
+						break;
+					case EPowerSegmentStatus::OPENED:
+						str += "STATUS:OPENED";
+						break;
+				}
+				str += FString::Printf(TEXT(" POWER:%g"), seg->GetPowerLevel());
+//				str += FString::Printf(TEXT(" DIRECTION:%g"), seg->GetPowerFlowDirection());
+				str += "\n";
+			}
+		}
+	}
+	return str;
+}
+
+FString AVisualTestHarnessActor::MakeHFSString()
+{
+	ASubmarineState *ss = SubmarineState;
+	std::string str;// = "\nSUBMARINE STATE:";
+	str += "\nLOCATION: " + std::to_string(ss->SubmarineLocation.X) + "," +
+	std::to_string(ss->SubmarineLocation.Y) + "," +
+	std::to_string(ss->SubmarineLocation.Z);
+	str += "\nROTATION: " + std::to_string(ss->SubmarineRotation.Pitch) + "," +
+	std::to_string(ss->SubmarineRotation.Yaw) + "," +
+	std::to_string(ss->SubmarineRotation.Roll);
+	str += "\nVELOCITY: " + std::to_string(ss->Velocity.X) + "," +
+	std::to_string(ss->Velocity.Y) + "," +
+	std::to_string(ss->Velocity.Z);
+	str += "\nLOXLEVEL: " + std::to_string(ss->LOXLevel);
+	str += "\nFLASK1LEVEL: " + std::to_string(ss->Flask1Level);
+	str += "\nFLASK2LEVEL: " + std::to_string(ss->Flask1Level);
+	str += "\nBATTERY1LEVEL: " + std::to_string(ss->Battery1Level);
+	str += "\nBATTERY2LEVEL: " + std::to_string(ss->Battery2Level);
+	str += "\nALERTLEVEL: " + std::string(TCHAR_TO_UTF8(*ss->AlertLevel));
+	str += "\nRUDDERANGLE: " + std::to_string(ss->RudderAngle);
+	str += "\nELEVATORANGLE: " + std::to_string(ss->ElevatorAngle);
+	str += "\nRIGHTBOWPLANEANGLE: " + std::to_string(ss->RightBowPlanesAngle);
+	str += "\nLEFTBOWPLANEANGLE: " + std::to_string(ss->LeftBowPlanesAngle);
+	str += "\nFORWARDMBTLEVEL: " + std::to_string(ss->ForwardMBTLevel);
+	str += "\nREARMBTLEVEL: " + std::to_string(ss->RearMBTLevel);
+	str += "\nFORWARDTBTLEVEL: " + std::to_string(ss->ForwardTBTLevel);
+	str += "\nREARTBTLEVEL: " + std::to_string(ss->RearTBTLevel);
+	str += "\n\n";
+	return UTF8_TO_TCHAR(str.c_str());
+}
+
+#define FULL_SYSTEMS_DESC_IN_CONTEXT
+FString AVisualTestHarnessActor::MakeSystemsBlock()
+{
+#ifdef FULL_SYSTEMS_DESC_IN_CONTEXT
+	FString str = "\nSUBMARINE SYSTEMS:\n";		// StaticWorldInfo
+	for (const ICommandHandler* Handler : CmdDistributor.CommandHandlers)
+	{
+		if (Handler)
+		{
+			const ICH_PowerJunction *pj = Handler->GetAsPowerJunction();
+			if (!pj) continue;
+			if (pj && pj->IsPowerSource()) str += "**" + Handler->GetSystemName() + " IS A POWER SOURCE\n";
+			else str += "**" + Handler->GetSystemName() + "\n";
+			FString gd = Handler->GetSystemGuidance();
+			if (gd.Len() > 0) str += "*GUIDANCE: " + gd + "\n";
+			FString st = Handler->GetSystemStatus();
+			if (st.Len() > 0) str += "*STATUS: " + st + "\n";
+			TArray<FString> cm = Handler->GetAvailableCommands();
+			if (cm.Num() > 0) {
+				str += "*AVAILABLE COMMANDS:\n";
+				for (FString& s : cm) str += s + "\n";
+			}
+			TArray<FString> qr = Handler->GetAvailableQueries();
+			if (qr.Num() > 0) {
+				str += "*AVAILABLE QUERIES:";
+				for (FString& s : qr) str += " " + s;
+				str += "\n";
+			}
+			//
+			if (pj) {
+				str += "*CONNECTS TO:";
+				for (int i=0; i<pj->Ports.Num(); i++) {
+					str += " " + pj->Ports[i]->GetName();
+				}
+				str += "\n";
+			}
+		}
+//break;		// TESTING because this is too long
+	}
+	str += "\nPOWER GRID SEGMENTS:\n";
+	for (const PWR_PowerSegment* seg : CmdDistributor.GetSegments())
+	{
+		if (seg->GetJunctionA()) str += FString::Printf(TEXT("%s.A->%s.%d\n"), *seg->GetName(), *seg->GetJunctionA()->GetSystemName(), seg->GetPortA());
+		else str += FString::Printf(TEXT("%s.A: NULL.%d\n"), *seg->GetName(), seg->GetPortA());
+		if (seg->GetJunctionB()) str += FString::Printf(TEXT("%s.B->%s.%d\n"), *seg->GetName(), *seg->GetJunctionB()->GetSystemName(), seg->GetPortB());
+		else str += FString::Printf(TEXT("%s.B: NULL.%d\n"), *seg->GetName(), seg->GetPortB());
+	
+	}
+#else // !FULL_SYSTEMS_DESC_IN_CONTEXT
+	FString str = "\nSUBMARINE SYSTEMS:";
+	for (const ICommandHandler* Handler : CmdDistributor.CommandHandlers)
+	{
+		str += " " + Handler->GetSystemName();
+	}
+#endif // !FULL_SYSTEMS_DESC_IN_CONTEXT
+	return str;
+}
+
+FString AVisualTestHarnessActor::MakeStatusBlock()
+{
+#ifdef FULL_SYSTEMS_DESC_IN_CONTEXT
+	FString str = "\nSUBMARINE SYSTEMS STATUS:\n";
+// & queryEntireState - changes by command
+// & per-junction status, power usage and noise - changes by command or damage or auto
+// & & GetSystemStatus(): projected battery/LOX depletion times - GetSystemStatus()
+// & & the entire path to the power source, to avoid hallucinations
+	for (const ICommandHandler* Handler : CmdDistributor.CommandHandlers)
+	{
+		if (Handler)
+		{
+			const ICH_PowerJunction *pj = Handler->GetAsPowerJunction();
+			if (!pj) continue;
+			str += "**" + Handler->GetSystemName();
+			switch (pj->GetStatus()) {
+				case EPowerJunctionStatus::NORMAL:
+					str += " NORMAL";
+					break;
+				case EPowerJunctionStatus::DAMAGED50:
+					str += " 50%% DAMAGED";
+					break;
+				case EPowerJunctionStatus::DAMAGED100:
+					str += " DAMAGED";
+					break;
+				case EPowerJunctionStatus::DESTROYED:
+					str += " DESTROYED";
+					break;
+			}
+			if (pj->IsPowerSource()) {
+				str += FString::Printf(TEXT(" POWER AVAILABLE=%g"), pj->GetPowerAvailable());
+			} else {
+				str += FString::Printf(TEXT(" POWER USAGE=%g"), pj->GetCurrentPowerUsage());
+			}
+			str += FString::Printf(TEXT(" NOISE=%g"), pj->GetCurrentNoiseLevel());
+			str += "\n";
+			// queried state
+			TArray<FString> qs = Handler->QueryEntireState();
+			if (qs.Num() > 0) {
+//						str += Handler->GetSystemName() + " ENTIRE STATE:\n";
+				for (FString& s : qs) str += "    " + s + "\n";
+			}
+			// TODO: status: projected battery/LOX depletion times
+			FString sts = Handler->GetSystemStatus();
+			if (sts.Len() > 0) {
+				str += Handler->GetSystemName() + " STATUS:\n" + sts + "\n";
+			}
+			// entire path to the power source
+			str += Handler->GetSystemName() + " POWER PATH: ";
+			const TArray<PWR_PowerSegment*> PPath = pj->GetPathToSourceSegments();
+			const TArray<ICH_PowerJunction*> JPath = pj->GetPathToSourceJunction();
+			for (int i=0; i < JPath.Num(); i++) {
+				if (i > 0) str += ":";
+				str += JPath[i]->GetSystemName();
+				if (PPath.Num() > i) str += ":" + PPath[i]->GetName();
+				else if (PPath.Num() < i) str += "<PATH MISSING>";
+			}
+			str += "\n";
+		}
+//break;		// TESTING because this is too long
+	}
+// & per-segment status and power usage/direction - changes by command or damage or auto
+	str += "\nPOWER GRID SEGMENTS STATUS:\n";
+	for (const PWR_PowerSegment* seg : CmdDistributor.GetSegments())
+	{
+		str += "**" + seg->GetName();
+		switch (seg->GetStatus()) {
+			case EPowerSegmentStatus::NORMAL:
+				str += " NORMAL";
+				break;
+			case EPowerSegmentStatus::SHORTED:
+				str += " SHORTED";
+				break;
+			case EPowerSegmentStatus::OPENED:
+				str += " OPENED";
+				break;
+		}
+		str += FString::Printf(TEXT(" POWER=%g"), seg->GetPowerLevel());
+//		str += FString::Printf(TEXT(" DIRECTION=%g"), seg->GetPowerFlowDirection());
+		str += "\n";
+	}
+	return str;
+#else // !FULL_SYSTEMS_DESC_IN_CONTEXT
+	return "SUBMARINE SYSTEMS STATUS CONTAINED IN SYSTEMS INFO\n";
+#endif // !FULL_SYSTEMS_DESC_IN_CONTEXT
+}
+
+#pragma mark Tools
+// This function is called by the lambda queued from LlamaImpl::toolCallCb
+void AVisualTestHarnessActor::HandleToolCall_GetSystemInfo(const FString& SystemName)
+{
+    UE_LOG(LogTemp, Log, TEXT("ToolCall: GetSystemInfo - System: '%s'"), *SystemName);
+
+    ICommandHandler* FoundHandler = nullptr;
+    for (ICommandHandler* Handler : CmdDistributor.CommandHandlers) {
+        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
+            FoundHandler = Handler;
+            break;
+        }
+    }
+
+    if (!FoundHandler) {
+        SendToolResponseToLlama(TEXT("get_system_info"), 
+            FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
+        return;
+    }
+
+	FString str = MakeCommandHandlerString(FoundHandler);
+
+    SendToolResponseToLlama(TEXT("get_system_info"), str);
+}
+
+void AVisualTestHarnessActor::HandleToolCall_QuerySubmarineSystem(const FString& QueryString)
+{
+    FString SystemName;
+    FString Aspect;
+    FString TempQueryString = QueryString.TrimStartAndEnd();
+
+    if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+		SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
+		return;
+    }
+    Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
+
+    UE_LOG(LogTemp, Log, TEXT("ToolCall: QuerySubmarineSystem - System: '%s', Aspect: '%s'"), *SystemName, *Aspect);
+
+    ICommandHandler* FoundHandler = nullptr;
+    for (ICommandHandler* Handler : CmdDistributor.CommandHandlers) {
+        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
+            FoundHandler = Handler;
+            break;
+        }
+    }
+
+    if (!FoundHandler) {
+        SendToolResponseToLlama(TEXT("query_submarine_system"), 
+            FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
+        return;
+    }
+
+	FString str = FoundHandler->QueryState(Aspect);
+
+    SendToolResponseToLlama(TEXT("query_submarine_system"), str);
+}
+
+void AVisualTestHarnessActor::HandleToolCall_CommandSubmarineSystem(const FString& QueryString)
+{
+	TArray<FString> Cmds;
+	QueryString.ParseIntoArray(Cmds, TEXT("\n"), true);
+
+	for (FString TempQueryString: Cmds) {
+		FString SystemName;
+		FString Aspect;
+		FString Verb;
+		FString Value;
+
+		if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
+			return;
+		}
+		Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
+		// split Aspect into Aspect Verb[ Value]
+		if (!TempQueryString.Split(TEXT(" "), &Aspect, &Verb, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT VERB'.\"}"));
+			return;
+		}
+		TempQueryString.Split(TEXT(" "), &Verb, &Value, ESearchCase::IgnoreCase, ESearchDir::FromStart);
+
+		ICommandHandler* FoundHandler = nullptr;
+		for (ICommandHandler* Handler : CmdDistributor.CommandHandlers) {
+			if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
+				FoundHandler = Handler;
+				break;
+			}
+		}
+
+		if (!FoundHandler) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
+			return;
+		}
+
+		ECommandResult r = FoundHandler->HandleCommand(Aspect, Verb, Value);
+		if (r == ECommandResult::Blocked) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"Command blocked.\"}")));
+			return;
+		}
+		if (r == ECommandResult::NotHandled) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"Command not handled.\"}")));
+			return;
+		}
+		if (r == ECommandResult::HandledWithError) {
+			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+				FString::Printf(TEXT("{\"error\": \"Command handled with error.\"}")));
+			return;
+		}
+//		SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+//			FString::Printf(TEXT("{\"accepted\": \"Command processed.\"}")));
+	}
+	SendToolResponseToLlama(TEXT("execute_submarine_command"), 
+		FString::Printf(TEXT("{\"error\": \"Command completed.\"}")));
+}
+
+void AVisualTestHarnessActor::ProcessToolCall(const FString &ToolCallJsonRaw) {
+	UE_LOG(LogTemp, Log, TEXT("MainThread: Received ToolCall: %s"), *ToolCallJsonRaw);
+	// Parse ToolCallJsonRaw to get tool name and arguments
+	TSharedPtr<FJsonObject> JsonObject;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ToolCallJsonRaw);
+	if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid()) {
+		FString ToolName;
+		if (JsonObject->TryGetStringField(TEXT("name"), ToolName)) {
+			if (ToolName.Equals(TEXT("get_system_info"))) {
+				FString QueryString;
+				const TSharedPtr<FJsonObject>* ArgsObject;
+				if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
+					(*ArgsObject)->TryGetStringField(TEXT("system_name"), QueryString)) {
+					HandleToolCall_GetSystemInfo(QueryString);
+				} else {
+					SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'system_name' in arguments.\"}"));
+				}
+			}
+			else if (ToolName.Equals(TEXT("execute_submarine_command"))) {
+				FString QueryString;
+				const TSharedPtr<FJsonObject>* ArgsObject;
+				if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
+					(*ArgsObject)->TryGetStringField(TEXT("command_string"), QueryString)) {
+					HandleToolCall_CommandSubmarineSystem(QueryString);
+				} else {
+					SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'command_string' in arguments.\"}"));
+				}
+			}
+			else if (ToolName.Equals(TEXT("query_submarine_system_aspect"))) {
+				FString QueryString;
+				const TSharedPtr<FJsonObject>* ArgsObject;
+				if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
+					(*ArgsObject)->TryGetStringField(TEXT("query_string"), QueryString)) {
+					HandleToolCall_QuerySubmarineSystem(QueryString);
+				} else {
+					SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'query_string' in arguments.\"}"));
+				}
+			}
+			else {
+				SendToolResponseToLlama(ToolName, FString::Printf(TEXT("{\"error\": \"Unknown tool name: %s\"}"), *ToolName));
+			}
+		} else {
+			 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Tool call JSON missing 'name' field.\"}"));
+		}
+	} else {
+		 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Invalid tool call JSON format.\"}"));
+	}
+}
+
+void AVisualTestHarnessActor::SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent)
+{
+    // Format according to how your LLM expects tool responses (e.g., Qwen's <|im_start|>tool...)
+    // This is the CONTENT that goes inside the tool role tags.
+    // The ProcessInputAndGenerate_LlamaThread will wrap it with <|im_start|>tool ... <|im_end|>
+    UE_LOG(LogTemp, Log, TEXT("Sending Tool Response for '%s': %s"), *ToolName, *JsonResponseContent);
+    LlamaAIXOComponent->ProcessInput(JsonResponseContent, MakeHFSString(), TEXT("tool"));
+}
+
+//void AVisualTestHarnessActor::AugmentVisPayload(const FContextVisPayload& contextBlocks)
+//{
+//}

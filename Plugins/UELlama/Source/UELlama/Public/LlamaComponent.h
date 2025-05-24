@@ -14,11 +14,6 @@
 
 #include "LlamaComponent.generated.h"
 
-//#define TRACK_PARALLEL_CONTEXT_TOKENS
-
-class AVisualTestHarnessActor;
-class ICommandHandler;
-
 // Delegates
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewTokenGenerated, FString, NewToken);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFullContextDumpReady, const FString&, ContextDump);
@@ -43,7 +38,7 @@ public:
                                enum ELevelTick TickType,
                                FActorComponentTickFunction* ThisTickFunction) override;
 
-	void ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor);
+	void ActivateLlamaComponent(FString SystemsContextBlock, FString LowFreqContextBlock);
 
     // Delegates
     UPROPERTY(BlueprintAssignable)
@@ -85,7 +80,7 @@ public:
     void TriggerFullContextDump();
 
 private:
-	void ProcessToolCall(FString ToolCallJsonRaw);
+	void ProcessToolCall(const FString &ToolCallJsonRaw);
 	void HandleToolCall_GetSystemInfo(const FString& QueryString);
 	void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
 	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
@@ -93,10 +88,7 @@ private:
 
 private:
     LlamaInternal* LlamaImpl; // Renamed from llama
-	AVisualTestHarnessActor* HarnessActor;
     bool bIsLlamaCoreReady = false; // Set by callback from Llama thread
-	FString SystemsContextBlockRecent;
-	FString LowFreqContextBlockRecent;
 
 	FString MakeCommandHandlerString(ICommandHandler *ich);
 	FString MakeSystemsBlock();
@@ -104,19 +96,21 @@ private:
 	FString MakeHFSString();
 
 private:
-    bool bPendingStaticWorldInfoUpdate = false;
-    FString PendingStaticWorldInfoText;
-    bool bPendingLowFrequencyStateUpdate = false;
-    FString PendingLowFrequencyStateText;
+//	FString SystemsContextBlockRecent;
+//	FString LowFreqContextBlockRecent;
+//    bool bPendingStaticWorldInfoUpdate = false;
+//    FString PendingStaticWorldInfoText;
+//    bool bPendingLowFrequencyStateUpdate = false;
+//    FString PendingLowFrequencyStateText;
 
 public:
     UFUNCTION(BlueprintPure, Category = "Llama")
-    bool IsLlamaBusy() const { return bIsLlamaGenerating.load(std::memory_order_acquire); }
+    bool IsLlamaBusy() const { return bIsLlamaGenerating; }
 
     UFUNCTION(BlueprintPure, Category = "Llama")
-    bool IsLlamaReady() const { return bIsLlamaCoreReady; } // You already have bIsLlamaCoreReady
+    bool IsLlamaReady() const { return bIsLlamaCoreReady; }
 
 private:
-    std::atomic<bool> bIsLlamaGenerating; // This can be set by Llama thread via a callback when it starts/stops generation.
+    bool bIsLlamaGenerating; // This can be set by Llama thread via a callback when it starts/stops generation.
 };
 

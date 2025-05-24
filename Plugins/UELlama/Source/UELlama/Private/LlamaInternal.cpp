@@ -819,11 +819,6 @@ if (eos_reached) {
                 bToolCallMadeThisTurn = true;
                 qLlamaToMain.enqueue([this, ToolCallPayloadForMainThread]() {
                 	if (toolCallCb) toolCallCb(ToolCallPayloadForMainThread);
-                	if (tokenCb) {
-                		tokenCb(TEXT("\n"));
-                		tokenCb(ToolCallPayloadForMainThread);
-                		tokenCb(TEXT("\n"));
-					}
 				});
 
                 UE_LOG(LogTemp, Log, TEXT("LlamaThread: Tool call detected: '%s'"), *ToolCallFullTagForHistory);

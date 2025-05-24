@@ -192,15 +192,19 @@ private:
 	TArray<TUniquePtr<ICH_PowerJunction>> PersistentJunctions;
 	TArray<TUniquePtr<PWR_PowerSegment>>  PersistentSegments;
 
+	FString SystemsContextBlockRecent;
+	FString LowFreqContextBlockRecent;
+    bool bPendingStaticWorldInfoUpdate = false;
+    FString PendingStaticWorldInfoText;
+    bool bPendingLowFrequencyStateUpdate = false;
+    FString PendingLowFrequencyStateText;
+
 public:
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	UFont* TinyFont = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category="UI")
 	UFont* SmallFont = nullptr;
-
-	friend class SSubDiagram;
-	friend class ULlamaComponent;
 
 	// Input handlers - moved to cpp
 	void OnZoomInTriggered(const FInputActionValue& Value);
@@ -229,7 +233,18 @@ public:
 	bool IsPointInEmptySpace(const FVector2D& Point) const;
 
 public:
-// callls from blueprints
+	UFUNCTION()
+	void ProcessToolCall(const FString &ToolCallJsonRaw);
+	void HandleToolCall_GetSystemInfo(const FString& QueryString);
+	void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
+	void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
+	FString MakeCommandHandlerString(ICommandHandler *ich);
+	FString MakeSystemsBlock();
+	FString MakeStatusBlock();
+	FString MakeHFSString();
+	void SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent);
+
+// calls from blueprints
 	// Command processing passthrough - moved to cpp
 	UFUNCTION(BlueprintCallable, Category = "Commands")
 	void ProcessCommandString(const FString& Command);
@@ -246,4 +261,6 @@ public:
 
 public:
 	friend class VisualizationManager;
+	friend class SSubDiagram;
+	friend class ULlamaComponent;
 }; 

@@ -207,6 +207,7 @@ public:
     }
     
 	friend class ULlamaComponent;
+	friend class AVisualTestHarnessActor;
 };
 
 

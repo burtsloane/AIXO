@@ -11,7 +11,6 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
 {
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.bStartWithTickEnabled = true;
-    HarnessActor = nullptr;
     LlamaImpl = new LlamaInternal();
 
     // Setup delegates to marshal callbacks from LlamaInternal to ULlamaComponent's Blueprint delegates
@@ -35,6 +34,11 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
             OnLlamaLoadingProgressDelegate.Broadcast(Progress);
         }
     };
+	LlamaImpl->toolCallCb = [this](FString ToolCallJsonRaw) {
+		{
+			OnToolCallDetected.Broadcast(ToolCallJsonRaw);
+		}
+	};
     //
     LlamaImpl->readyCb = [this](FString ReadyMessage) {
         {
@@ -46,20 +50,15 @@ ULlamaComponent::ULlamaComponent(const FObjectInitializer& ObjectInitializer)
     LlamaImpl->contextChangedCb = [this](const FContextVisPayload& contextBlocks) {
         {
         	FContextVisPayload FinalPayload = (FContextVisPayload&)contextBlocks;
-			FinalPayload.bIsStaticWorldInfoUpToDate = !bPendingStaticWorldInfoUpdate; // If pending, it's not up-to-date on Llama thread yet
-			FinalPayload.bIsLowFrequencyStateUpToDate = !bPendingLowFrequencyStateUpdate;
-			FinalPayload.bIsLlamaCoreActuallyReady = this->bIsLlamaCoreReady;
-			FinalPayload.bIsLlamaCurrentlyIdle = this->bIsLlamaCoreReady && !this->bIsLlamaGenerating.load(std::memory_order_acquire);
+// TODO: these flags broke because the functionality was moved up to VisualTestHarnessActor
+//			FinalPayload.bIsStaticWorldInfoUpToDate = !bPendingStaticWorldInfoUpdate; // If pending, it's not up-to-date on Llama thread yet
+//			FinalPayload.bIsLowFrequencyStateUpToDate = !bPendingLowFrequencyStateUpdate;
+			FinalPayload.bIsLlamaCoreActuallyReady = bIsLlamaCoreReady;
+			FinalPayload.bIsLlamaCurrentlyIdle = bIsLlamaCoreReady && !bIsLlamaGenerating;
 			//
             OnLlamaContextChangedDelegate.Broadcast(FinalPayload);
         }
     };
-	LlamaImpl->toolCallCb = [this](FString ToolCallJsonRaw) {
-		{
-			ProcessToolCall(ToolCallJsonRaw);
-			OnToolCallDetected.Broadcast(ToolCallJsonRaw);
-		}
-	};
     LlamaImpl->setIsGeneratingCb = [this](bool isGen) {
         {
         	bIsLlamaGenerating = isGen;
@@ -77,10 +76,8 @@ void ULlamaComponent::BeginPlay()
     Super::BeginPlay();
 }
 
-void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessActor)		// called by VisualTestHarnessActor::BeginPlay because it is first
+void ULlamaComponent::ActivateLlamaComponent(FString SystemsContextBlock, FString LowFreqContextBlock)		// called by VisualTestHarnessActor::BeginPlay because it is first
 {
-	HarnessActor = InHarnessActor;
-
 	UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::ActivateLlamaComponent."));
 
     if (LlamaImpl && !PathToModel.IsEmpty() && !SystemPromptFileName.IsEmpty()) {
@@ -103,8 +100,8 @@ void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessA
         // Marshal the initialization call to the Llama thread
         FString ModelPathCopy = PathToModel;
         FString SystemPromptCopy = LoadedSystemPrompt;
-		FString SystemsContextBlock;
-		FString LowFreqContextBlock;
+//		FString SystemsContextBlock;
+//		FString LowFreqContextBlock;
         // TODO: this is where to add to the static system prompt, need access to the VisualTestHarnessActor and SubmarineState
         //        but also can change any block by calling UpdateContextBlock() from the main thread
 // & per-junction name, power source flag, GetSystemInfo(), GetAvailableCommands/Queries
@@ -112,22 +109,22 @@ void ULlamaComponent::ActivateLlamaComponent(AVisualTestHarnessActor* InHarnessA
 // & per-segment name
 // & & connectivity == junction name and pin # x2
 
-        if (!HarnessActor) UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: HarnessActor is NULL!!!!!!!!!!"));
-        if (HarnessActor) {
-			SystemsContextBlock = MakeSystemsBlock();
-			LowFreqContextBlock = MakeStatusBlock();
-//UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: LowFreqContextBlock: %s"), *str);
-
-//        	ASubmarineState *ss = HarnessActor->SubmarineState;
-		}
+//        if (!HarnessActor) UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: HarnessActor is NULL!!!!!!!!!!"));
+//        if (HarnessActor) {
+//			SystemsContextBlock = MakeSystemsBlock();
+//			LowFreqContextBlock = MakeStatusBlock();
+////UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: LowFreqContextBlock: %s"), *str);
+//
+////        	ASubmarineState *ss = HarnessActor->SubmarineState;
+//		}
 		
 //SystemPromptCopy = "System Prompt\n";//You are AIXO, operating a submarine with Captain. This is the System Prompt. It's not very long.\n";
 //SystemsContextBlock = "Static World Info\n";//"Systems string\nalso not long\n";
 //LowFreqContextBlock = "Low Frequency\n";//"LowFreq string\nalso not very long\n";
 LowFreqContextBlock = "";		// TESTING because this changes quickly, as soon as the propagator runs
 
-		SystemsContextBlockRecent = SystemsContextBlock;
-		LowFreqContextBlockRecent = LowFreqContextBlock;
+//		SystemsContextBlockRecent = SystemsContextBlock;
+//		LowFreqContextBlockRecent = LowFreqContextBlock;
 
         LlamaImpl->qMainToLlama.enqueue([this, ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock]() {
 	UE_LOG(LogTemp, Log, TEXT("ULlamaComponent::ActivateLlamaComponent calling InitializeLlama_LlamaThread."));
@@ -240,39 +237,39 @@ void ULlamaComponent::TickComponent(float DeltaTime,
 */
     }
 
-    if (bIsLlamaCoreReady && HarnessActor) {
-        FString CurrentSystemsBlock = MakeSystemsBlock();
-        if (SystemsContextBlockRecent != CurrentSystemsBlock) {
-            bPendingStaticWorldInfoUpdate = true;
-            PendingStaticWorldInfoText = CurrentSystemsBlock;
-        }
-
-        FString CurrentLowFreqBlock = MakeStatusBlock();
-        if (LowFreqContextBlockRecent != CurrentLowFreqBlock) {
-            bPendingLowFrequencyStateUpdate = true;
-            PendingLowFrequencyStateText = CurrentLowFreqBlock;
-        }
-
-        // Attempt to send pending updates if Llama is not busy
-        if (!bIsLlamaGenerating.load(std::memory_order_acquire)) { // Check the flag
-            if (bPendingStaticWorldInfoUpdate) {
-                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: StaticWorldInfo changed. Queuing update NOW."));
-                UpdateContextBlock(ELlamaContextBlockType::StaticWorldInfo, PendingStaticWorldInfoText);
-                SystemsContextBlockRecent = PendingStaticWorldInfoText; // Mark as sent
-                bPendingStaticWorldInfoUpdate = false;
-            }
-            if (bPendingLowFrequencyStateUpdate) {
-                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: LowFrequencyState changed. Queuing update NOW."));
-                UpdateContextBlock(ELlamaContextBlockType::LowFrequencyState, PendingLowFrequencyStateText);
-                LowFreqContextBlockRecent = PendingLowFrequencyStateText; // Mark as sent
-                bPendingLowFrequencyStateUpdate = false;
-            }
-        } else {
-            if (bPendingStaticWorldInfoUpdate || bPendingLowFrequencyStateUpdate) {
-                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Llama is busy, context updates deferred."));
-            }
-        }
-    }
+//    if (bIsLlamaCoreReady) {
+//        FString CurrentSystemsBlock = MakeSystemsBlock();
+//        if (SystemsContextBlockRecent != CurrentSystemsBlock) {
+//            bPendingStaticWorldInfoUpdate = true;
+//            PendingStaticWorldInfoText = CurrentSystemsBlock;
+//        }
+//
+//        FString CurrentLowFreqBlock = MakeStatusBlock();
+//        if (LowFreqContextBlockRecent != CurrentLowFreqBlock) {
+//            bPendingLowFrequencyStateUpdate = true;
+//            PendingLowFrequencyStateText = CurrentLowFreqBlock;
+//        }
+//
+//        // Attempt to send pending updates if Llama is not busy
+//        if (!bIsLlamaGenerating) { // Check the flag
+//            if (bPendingStaticWorldInfoUpdate) {
+//                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: StaticWorldInfo changed. Queuing update NOW."));
+//                UpdateContextBlock(ELlamaContextBlockType::StaticWorldInfo, PendingStaticWorldInfoText);
+//                SystemsContextBlockRecent = PendingStaticWorldInfoText; // Mark as sent
+//                bPendingStaticWorldInfoUpdate = false;
+//            }
+//            if (bPendingLowFrequencyStateUpdate) {
+//                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: LowFrequencyState changed. Queuing update NOW."));
+//                UpdateContextBlock(ELlamaContextBlockType::LowFrequencyState, PendingLowFrequencyStateText);
+//                LowFreqContextBlockRecent = PendingLowFrequencyStateText; // Mark as sent
+//                bPendingLowFrequencyStateUpdate = false;
+//            }
+//        } else {
+//            if (bPendingStaticWorldInfoUpdate || bPendingLowFrequencyStateUpdate) {
+//                UE_LOG(LogTemp, Log, TEXT("ULlamaComponent: Llama is busy, context updates deferred."));
+//            }
+//        }
+//    }
 }
 
 #pragma mark Context Blocks
@@ -565,199 +562,3 @@ FString ULlamaComponent::MakeStatusBlock()
 #endif // !FULL_SYSTEMS_DESC_IN_CONTEXT
 }
 
-#pragma mark Tools
-// This function is called by the lambda queued from LlamaImpl::toolCallCb
-void ULlamaComponent::HandleToolCall_GetSystemInfo(const FString& SystemName)
-{
-#ifdef why //why
-    if (!HarnessActor) {
-        SendToolResponseToLlama(TEXT("get_system_info"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("ToolCall: GetSystemInfo - System: '%s'"), *SystemName);
-
-    ICommandHandler* FoundHandler = nullptr;
-    for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
-        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
-            FoundHandler = Handler;
-            break;
-        }
-    }
-
-    if (!FoundHandler) {
-        SendToolResponseToLlama(TEXT("get_system_info"), 
-            FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
-        return;
-    }
-
-	FString str = MakeCommandHandlerString(FoundHandler);
-
-    SendToolResponseToLlama(TEXT("get_system_info"), str);
-#endif //why
-}
-
-void ULlamaComponent::HandleToolCall_QuerySubmarineSystem(const FString& QueryString)
-{
-#ifdef why //why
-    if (!HarnessActor) {
-        SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
-        return;
-    }
-
-    FString SystemName;
-    FString Aspect;
-    FString TempQueryString = QueryString.TrimStartAndEnd();
-
-    if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-		SendToolResponseToLlama(TEXT("query_submarine_system"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
-		return;
-    }
-    Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
-
-    UE_LOG(LogTemp, Log, TEXT("ToolCall: QuerySubmarineSystem - System: '%s', Aspect: '%s'"), *SystemName, *Aspect);
-
-    ICommandHandler* FoundHandler = nullptr;
-    for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
-        if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
-            FoundHandler = Handler;
-            break;
-        }
-    }
-
-    if (!FoundHandler) {
-        SendToolResponseToLlama(TEXT("query_submarine_system"), 
-            FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
-        return;
-    }
-
-	FString str = FoundHandler->QueryState(Aspect);
-
-    SendToolResponseToLlama(TEXT("query_submarine_system"), str);
-#endif //why
-}
-
-void ULlamaComponent::HandleToolCall_CommandSubmarineSystem(const FString& QueryString)
-{
-#ifdef why //why
-    if (!HarnessActor) {
-        SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Submarine systems unavailable (HarnessActor null)\"}"));
-        return;
-    }
-
-	TArray<FString> Cmds;
-	QueryString.ParseIntoArray(Cmds, TEXT("\n"), true);
-
-	for (FString TempQueryString: Cmds) {
-		FString SystemName;
-		FString Aspect;
-		FString Verb;
-		FString Value;
-
-		if (!TempQueryString.Split(TEXT("."), &SystemName, &Aspect, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT'.\"}"));
-			return;
-		}
-		Aspect = Aspect.TrimStartAndEnd().ToUpper(); // Normalize query type
-		// split Aspect into Aspect Verb[ Value]
-		if (!TempQueryString.Split(TEXT(" "), &Aspect, &Verb, ESearchCase::IgnoreCase, ESearchDir::FromStart)) {
-			SendToolResponseToLlama(TEXT("execute_submarine_command"), TEXT("{\"error\": \"Invalid format. Expected 'SYSTEM_NAME.ASPECT VERB'.\"}"));
-			return;
-		}
-		TempQueryString.Split(TEXT(" "), &Verb, &Value, ESearchCase::IgnoreCase, ESearchDir::FromStart);
-
-		ICommandHandler* FoundHandler = nullptr;
-		for (ICommandHandler* Handler : HarnessActor->CmdDistributor.CommandHandlers) {
-			if (Handler && Handler->GetSystemName().Equals(SystemName, ESearchCase::IgnoreCase)) {
-				FoundHandler = Handler;
-				break;
-			}
-		}
-
-		if (!FoundHandler) {
-			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
-				FString::Printf(TEXT("{\"error\": \"System '%s' not found.\"}"), *SystemName));
-			return;
-		}
-
-		ECommandResult r = FoundHandler->HandleCommand(Aspect, Verb, Value);
-		if (r == ECommandResult::Blocked) {
-			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
-				FString::Printf(TEXT("{\"error\": \"Command blocked.\"}")));
-			return;
-		}
-		if (r == ECommandResult::NotHandled) {
-			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
-				FString::Printf(TEXT("{\"error\": \"Command not handled.\"}")));
-			return;
-		}
-		if (r == ECommandResult::HandledWithError) {
-			SendToolResponseToLlama(TEXT("execute_submarine_command"), 
-				FString::Printf(TEXT("{\"error\": \"Command handled with error.\"}")));
-			return;
-		}
-		SendToolResponseToLlama(TEXT("execute_submarine_command"), 
-			FString::Printf(TEXT("{\"accepted\": \"Command processed.\"}")));
-	}
-	SendToolResponseToLlama(TEXT("execute_submarine_command"), 
-		FString::Printf(TEXT("{\"error\": \"Command completed.\"}")));
-#endif //why
-}
-
-void ULlamaComponent::ProcessToolCall(FString ToolCallJsonRaw) {
-	UE_LOG(LogTemp, Log, TEXT("MainThread: Received ToolCall: %s"), *ToolCallJsonRaw);
-	// Parse ToolCallJsonRaw to get tool name and arguments
-	TSharedPtr<FJsonObject> JsonObject;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ToolCallJsonRaw);
-	if (FJsonSerializer::Deserialize(Reader, JsonObject) && JsonObject.IsValid()) {
-		FString ToolName;
-		if (JsonObject->TryGetStringField(TEXT("name"), ToolName)) {
-			if (ToolName.Equals(TEXT("get_system_info"))) {
-				FString QueryString;
-				const TSharedPtr<FJsonObject>* ArgsObject;
-				if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
-					(*ArgsObject)->TryGetStringField(TEXT("system_name"), QueryString)) {
-					HandleToolCall_GetSystemInfo(QueryString);
-				} else {
-					SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'system_name' in arguments.\"}"));
-				}
-			}
-			else if (ToolName.Equals(TEXT("execute_submarine_command"))) {
-				FString QueryString;
-				const TSharedPtr<FJsonObject>* ArgsObject;
-				if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
-					(*ArgsObject)->TryGetStringField(TEXT("command_string"), QueryString)) {
-					HandleToolCall_CommandSubmarineSystem(QueryString);
-				} else {
-					SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'command_string' in arguments.\"}"));
-				}
-			}
-			else if (ToolName.Equals(TEXT("query_submarine_system_aspect"))) {
-				FString QueryString;
-				const TSharedPtr<FJsonObject>* ArgsObject;
-				if (JsonObject->TryGetObjectField(TEXT("arguments"), ArgsObject) && 
-					(*ArgsObject)->TryGetStringField(TEXT("query_string"), QueryString)) {
-					HandleToolCall_QuerySubmarineSystem(QueryString);
-				} else {
-					SendToolResponseToLlama(ToolName, TEXT("{\"error\": \"Missing or invalid 'query_string' in arguments.\"}"));
-				}
-			}
-			else {
-				SendToolResponseToLlama(ToolName, FString::Printf(TEXT("{\"error\": \"Unknown tool name: %s\"}"), *ToolName));
-			}
-		} else {
-			 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Tool call JSON missing 'name' field.\"}"));
-		}
-	} else {
-		 SendToolResponseToLlama(TEXT("unknown_tool"), TEXT("{\"error\": \"Invalid tool call JSON format.\"}"));
-	}
-}
-
-void ULlamaComponent::SendToolResponseToLlama(const FString& ToolName, const FString& JsonResponseContent)
-{
-    // Format according to how your LLM expects tool responses (e.g., Qwen's <|im_start|>tool...)
-    // This is the CONTENT that goes inside the tool role tags.
-    // The ProcessInputAndGenerate_LlamaThread will wrap it with <|im_start|>tool ... <|im_end|>
-    UE_LOG(LogTemp, Log, TEXT("Sending Tool Response for '%s': %s"), *ToolName, *JsonResponseContent);
-    ProcessInput(JsonResponseContent, TEXT(""), TEXT("tool"));
-}
