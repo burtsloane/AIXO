@@ -2,9 +2,10 @@
 #include "Llama.h"  // Include the full definition of LlamaInternal
 #include "LlamaComponent.h"
 
-ULlamaCore::ULlamaCore()
+ULlamaCore::ULlamaCore(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer)
 {
-    LlamaInternal = std::make_unique<Internal::LlamaInternal>();
+    LlamaInternal = MakeUnique<Internal::LlamaInternal>();
 }
 
 ULlamaCore::~ULlamaCore()

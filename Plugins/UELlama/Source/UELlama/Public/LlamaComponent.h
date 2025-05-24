@@ -1,6 +1,35 @@
 // LLamaComponent.h
 #pragma once
 
+// Engine includes first
+#include "CoreMinimal.h"
+#include "Components/ActorComponent.h"
+#include "Templates/SharedPointer.h"
+#include "Templates/UniquePtr.h"
+
+// Plugin includes
+#include "LlamaTypes.h"
+#include "ContextVisualizationData.h"
+#include "ILlamaProvider.h"
+#include "ILLMVisualizationInterface.h"
+#include "ILLMGameInterface.h"
+#include "ILlamaCore.h"
+
+// Third-party includes
+#include "llama-cpp.h"
+#include "ConcurrentQueue.h"
+#include "Llama.h"  // Contains LlamaInternal definition
+
+// STL includes last
+#include <memory>
+#include <atomic>
+#include <deque>
+#include <thread>
+#include <functional>
+#include <mutex>
+
+#include "LlamaComponent.generated.h"
+
 // ./llama-server -m /path/to/model.gguf --host 0.0.0.0 --port 8080 --n-predict 2048 --ctx-size 4096 --streaming
 //The key parameters are:
 //-m: Path to your model file
@@ -15,34 +44,10 @@
 //Set bUseLocalLlama = false on your LlamaComponent
 //Set the RemoteEndpoint to http://your.gpu.machine.ip:8080/completion
 
-#include <Components/ActorComponent.h>
-#include <CoreMinimal.h>
-#include <memory>
-#include <atomic>
-#include <deque>
-#include <thread>
-#include <functional>
-#include <mutex>
-#include "llama.h"
-#include "ConcurrentQueue.h"
-#include "Llama.h"  // Include Llama.h which contains the LlamaInternal definition
-//#include "VisualTestHarnessActor.h"
-
-#include "ContextVisualizationData.h"
-#include "LLMProvider.h"
-#include "ILLMVisualizationInterface.h"
-#include "ILLMGameInterface.h"
-#include "ILlamaCore.h"
-#include "LlamaTypes.h"
-
-#include "LlamaComponent.generated.h"
-
 //#define TRACK_PARALLEL_CONTEXT_TOKENS
 
 // Remove VisualTestHarnessActor forward declaration
 // class AVisualTestHarnessActor;
-
-using namespace std;
 
 namespace
 {
@@ -59,14 +64,26 @@ namespace
 // Remove the LlamaInternal class definition since it's now in Llama.h
 
 // Delegates
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewTokenGenerated, FString, NewToken);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNewTokenGenerated, const FString&, Token);
 //DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFullContextDumpReady, const FString&, ContextDump);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnToolCallDetected, const FString&, ToolCallJson);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnToolCallDetected, const FString&, ToolCall);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaErrorOccurred, const FString&, ErrorMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaLoadingProgressDelegate, float, Progress);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLlamaReady, const FString&, ReadyMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnContextChanged, const FContextVisPayload&, Payload);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTokenGenerated, const FString&, Token);
+
+// Forward declarations
+namespace Internal {
+    class LlamaInternal;
+}
+
+UENUM(BlueprintType)
+enum class ELlamaProviderType : uint8
+{
+    Local,
+    Remote
+};
 
 UCLASS(Category = "LLM", BlueprintType, meta = (BlueprintSpawnableComponent))
 class UELLAMA_API ULlamaComponent : public UActorComponent
@@ -100,10 +117,10 @@ public:
 
     // State queries
     UFUNCTION(BlueprintPure, Category = "Llama")
-    bool IsLlamaBusy() const;
+    bool IsLlamaBusy() const { return bIsLlamaGenerating; }
 
     UFUNCTION(BlueprintPure, Category = "Llama")
-    bool IsLlamaReady() const;
+    bool IsLlamaReady() const { return bIsLlamaCoreReady; }
 
     // Delegates
     UPROPERTY(BlueprintAssignable)
@@ -149,16 +166,21 @@ public:
     UPROPERTY(EditAnywhere, Category = "LLM", meta = (EditCondition = "!bUseLocalLlama"))
     FString APIKey;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Llama")
+    ELlamaProviderType ProviderType = ELlamaProviderType::Local;
+
 protected:
     // Internal state
-    UPROPERTY()
-    TScriptInterface<ILlamaCoreInterface> LlamaCore;
-
-    UPROPERTY()
-    TScriptInterface<ILLMGameInterface> GameInterface;
-
-    UPROPERTY()
-    TScriptInterface<ILLMVisualizationInterface> VisualizationInterface;
+    TUniquePtr<Internal::LlamaInternal> LlamaInternal;  // Use Unreal's TUniquePtr
+    std::atomic<bool> bIsLlamaGenerating;
+    bool bIsLlamaCoreReady;
+    FString SystemsContextBlockRecent;
+    FString LowFreqContextBlockRecent;
+    bool bPendingStaticWorldInfoUpdate;
+    FString PendingStaticWorldInfoText;
+    bool bPendingLowFrequencyStateUpdate;
+    FString PendingLowFrequencyStateText;
+    ILlamaProvider* Provider;  // Fixed typo from ILLMProvider to ILlamaProvider
 
     // Context management
     void UpdateSystemPrompt(const FString& NewPrompt);
@@ -176,10 +198,11 @@ protected:
 
 private:
     // Game interface helpers
-	void InitializeProvider();
+    void InitializeProvider();  // Only declare once
     void CreateProviderInstance(); // Creates and returns the appropriate provider instance based on configuration
-    FString MakeSystemsBlock();
-    FString MakeStatusBlock();
+    FString MakeSystemsBlock();  // Only declare once
+    FString MakeStatusBlock();  // Only declare once
+    FString LoadSystemPrompt() const;  // Add declaration here
     void HandleToolCall_GetSystemInfo(const FString& QueryString);
     void HandleToolCall_CommandSubmarineSystem(const FString& QueryString);
     void HandleToolCall_QuerySubmarineSystem(const FString& QueryString);
@@ -187,25 +210,15 @@ private:
     UFUNCTION()
     void HandleProviderReady(const FString& ReadyMessage);
 
-    // State tracking
-    std::atomic<bool> bIsLlamaGenerating;
-    bool bIsLlamaCoreReady;
-    FString SystemsContextBlockRecent;
-    FString LowFreqContextBlockRecent;
-    bool bPendingStaticWorldInfoUpdate;
-    FString PendingStaticWorldInfoText;
-    bool bPendingLowFrequencyStateUpdate;
-    FString PendingLowFrequencyStateText;
-    ILLMProvider *Provider;
-    ULLMContextManager* ContextManager;
-
     // Queue processing
     bool ProcessQueue() { return LlamaInternal ? LlamaInternal->qMainToLlama.processQ() : false; }
     bool ProcessResponseQueue() { return LlamaInternal ? LlamaInternal->qLlamaToMain.processQ() : false; }
 
-    // Use LlamaInternal from Llama.h
-    std::unique_ptr<Internal::LlamaInternal> LlamaInternal;
+    // Game interface
+    UPROPERTY()
+    TScriptInterface<ILLMGameInterface> GameInterface;
 
-    // ... rest of private members ...
+    UPROPERTY()
+    TScriptInterface<ILLMVisualizationInterface> VisualizationInterface;
 };
 

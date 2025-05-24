@@ -1,26 +1,23 @@
 #pragma once
 
+// Engine includes first
 #include "CoreMinimal.h"
-#include "llama.h"  // Need complete type for llama_batch
+
+// Third-party includes
+#include "llama-cpp.h"  // This includes the full llama.h with all type definitions
+#include "ConcurrentQueue.h"
+
+// Plugin includes
 #include "LlamaTypes.h"  // For ELlamaContextBlockType
 #include "ContextVisualizationData.h"  // For FContextVisPayload
+
+// STL includes last
 #include <thread>
 #include <memory>
 #include <vector>
 #include <string>
 #include <functional>
 #include <atomic>
-#include "ConcurrentQueue.h"
-
-// Forward declare llama types to avoid including the full header
-// These match the types defined in llama.h
-typedef int llama_token;
-typedef struct llama_model llama_model;
-typedef struct llama_context llama_context;
-typedef struct llama_batch llama_batch;
-typedef struct llama_sampler llama_sampler;
-typedef struct llama_vocab llama_vocab;
-typedef int llama_seq_id;  // Added for batch operations
 
 namespace Internal
 {

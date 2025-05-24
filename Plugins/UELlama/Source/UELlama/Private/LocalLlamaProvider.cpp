@@ -1,129 +1,121 @@
 #include "LocalLlamaProvider.h"
-#include "LlamaCore.h"
 
 ULocalLlamaProvider::ULocalLlamaProvider(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer)
+    , ContextManager(nullptr)
 {
-    // Create LlamaCore instance as a default subobject with a proper name
-    LlamaCore = ObjectInitializer.CreateDefaultSubobject<ULlamaCore>(this, TEXT("LlamaCore"));
+    LlamaInternal = MakeUnique<Internal::LlamaInternal>();
 }
 
 ULocalLlamaProvider::~ULocalLlamaProvider()
 {
-    if (LlamaCore)
+    if (LlamaInternal)
     {
-        LlamaCore->Shutdown();
+        LlamaInternal->SignalStopRunning();
+        LlamaInternal.Reset();
     }
 }
 
-void ULocalLlamaProvider::Initialize(const FString& ModelPath)
+void ULocalLlamaProvider::Initialize(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq)
 {
-    if (!LlamaCore)
+    if (LlamaInternal)
     {
-        UE_LOG(LogTemp, Error, TEXT("ULocalLlamaProvider::Initialize - LlamaCore is null!"));
-        return;
+        LlamaInternal->InitializeLlama_LlamaThread(ModelPath, InitialSystemPrompt, Systems, LowFreq);
     }
-
-    // Set up callbacks
-    LlamaCore->SetTokenCallback([this](FString Token) {
-        UE_LOG(LogTemp, Log, TEXT("LocalLlamaProvider: Token callback received: %s"), *Token);
-        // Broadcast token to any listeners
-        OnTokenGenerated.Broadcast(Token);
-    });
-
-    LlamaCore->SetContextChangedCallback([this](const FContextVisPayload& Payload) {
-        UE_LOG(LogTemp, Log, TEXT("LocalLlamaProvider: Context changed callback received"));
-        OnContextChanged.Broadcast(Payload);
-    });
-
-    LlamaCore->SetErrorCallback([this](FString Error) {
-        UE_LOG(LogTemp, Error, TEXT("LocalLlamaProvider: LlamaCore error: %s"), *Error);
-    });
-
-    LlamaCore->SetProgressCallback([this](float Progress) {
-        UE_LOG(LogTemp, Log, TEXT("LocalLlamaProvider: Progress update: %.2f"), Progress);
-    });
-
-    LlamaCore->SetReadyCallback([this](FString Message) {
-        UE_LOG(LogTemp, Log, TEXT("LocalLlamaProvider: Llama is ready: %s"), *Message);
-        OnReady.Broadcast(Message);
-    });
-
-    LlamaCore->SetToolCallCallback([this](FString ToolCall) {
-        UE_LOG(LogTemp, Log, TEXT("LocalLlamaProvider: Tool call received: %s"), *ToolCall);
-    });
-
-    LlamaCore->SetIsGeneratingCallback([this](bool bIsGenerating) {
-        UE_LOG(LogTemp, Log, TEXT("LocalLlamaProvider: Generation state changed: %s"), bIsGenerating ? TEXT("Generating") : TEXT("Idle"));
-    });
-
-    // Get context blocks from the context manager if available
-    FString SystemPrompt = TEXT("");
-    FString SystemsInfo = TEXT("");
-    FString LowFreqState = TEXT("");
-
-    if (ContextManager)
-    {
-        SystemPrompt = ContextManager->GetSystemPrompt();
-        SystemsInfo = ContextManager->GetSystemsInfo();
-        LowFreqState = ContextManager->GetLowFreqState();
-        UE_LOG(LogTemp, Log, TEXT("LocalLlamaProvider: Retrieved context blocks from manager - SystemPrompt: %d chars, SystemsInfo: %d chars, LowFreqState: %d chars"),
-            SystemPrompt.Len(), SystemsInfo.Len(), LowFreqState.Len());
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("LocalLlamaProvider: No context manager available"));
-    }
-
-    // Initialize with context blocks
-    LlamaCore->Initialize(ModelPath, SystemPrompt, SystemsInfo, LowFreqState);
-}
-
-void ULocalLlamaProvider::ProcessInput(const FString& Input, const FString& HighFreqContext)
-{
-    if (!LlamaCore)
-    {
-        UE_LOG(LogTemp, Error, TEXT("ULocalLlamaProvider::ProcessInput - LlamaCore is null!"));
-        return;
-    }
-
-    LlamaCore->ProcessInput(Input, HighFreqContext, TEXT(""));
 }
 
 void ULocalLlamaProvider::Shutdown()
 {
-    if (LlamaCore)
+    if (LlamaInternal)
     {
-        LlamaCore->Shutdown();
+        LlamaInternal->SignalStopRunning();
+        LlamaInternal.Reset();
     }
 }
 
-void ULocalLlamaProvider::UpdateContextBlock(ELLMContextBlockType BlockType, const FString& NewContent)
+void ULocalLlamaProvider::ProcessInput(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint)
 {
-    if (!LlamaCore)
+    if (LlamaInternal)
     {
-        UE_LOG(LogTemp, Error, TEXT("ULocalLlamaProvider::UpdateContextBlock - LlamaCore is null!"));
-        return;
+        LlamaInternal->ProcessInputAndGenerate_LlamaThread(InputText, HighFrequencyContextText, InputTypeHint);
     }
+}
 
-    // Convert from LLMContextBlockType to LlamaContextBlockType
-    ELlamaContextBlockType LlamaBlockType;
-    switch (BlockType)
+void ULocalLlamaProvider::UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewContent)
+{
+    if (LlamaInternal)
     {
-        case ELLMContextBlockType::SystemPrompt:
-            LlamaBlockType = ELlamaContextBlockType::SystemPrompt;
-            break;
-        case ELLMContextBlockType::StaticWorldInfo:
-            LlamaBlockType = ELlamaContextBlockType::StaticWorldInfo;
-            break;
-        case ELLMContextBlockType::LowFrequencyState:
-            LlamaBlockType = ELlamaContextBlockType::LowFrequencyState;
-            break;
-        default:
-            UE_LOG(LogTemp, Warning, TEXT("ULocalLlamaProvider::UpdateContextBlock - Unsupported block type"));
-            return;
+        LlamaInternal->UpdateContextBlock_LlamaThread(BlockType, NewContent);
     }
+}
 
-    LlamaCore->UpdateContextBlock(LlamaBlockType, NewContent);
+void ULocalLlamaProvider::RequestFullContextDump()
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->RequestFullContextDump_LlamaThread();
+    }
+}
+
+bool ULocalLlamaProvider::IsGenerating() const
+{
+    return LlamaInternal && LlamaInternal->bIsGenerating;
+}
+
+void ULocalLlamaProvider::SetTokenCallback(std::function<void(FString)> Callback)
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->tokenCb = Callback;
+    }
+}
+
+void ULocalLlamaProvider::SetContextChangedCallback(std::function<void(const FContextVisPayload&)> Callback)
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->contextChangedCb = Callback;
+    }
+}
+
+void ULocalLlamaProvider::SetErrorCallback(std::function<void(FString)> Callback)
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->errorCb = Callback;
+    }
+}
+
+void ULocalLlamaProvider::SetProgressCallback(std::function<void(float)> Callback)
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->progressCb = Callback;
+    }
+}
+
+void ULocalLlamaProvider::SetReadyCallback(std::function<void(FString)> Callback)
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->readyCb = Callback;
+    }
+}
+
+void ULocalLlamaProvider::SetToolCallCallback(std::function<void(FString)> Callback)
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->toolCallCb = Callback;
+    }
+}
+
+void ULocalLlamaProvider::SetIsGeneratingCallback(std::function<void(bool)> Callback)
+{
+    if (LlamaInternal)
+    {
+        LlamaInternal->setIsGeneratingCb = Callback;
+    }
 }
 
 ULLMContextManager* ULocalLlamaProvider::GetContextManager() const

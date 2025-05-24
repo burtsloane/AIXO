@@ -2,20 +2,25 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include "Templates/UniquePtr.h"
 #include "ILlamaProvider.h"
+#include "Llama.h"
+#include "LlamaTypes.h"
 #include "LocalLlamaProvider.generated.h"
+
+class ULLMContextManager;
 
 namespace Internal {
     class LlamaInternal;
 }
 
 UCLASS()
-class UELlama_API ULocalLlamaProvider : public UObject, public ILlamaProvider
+class UELLAMA_API ULocalLlamaProvider : public UObject, public ILlamaProvider
 {
     GENERATED_BODY()
 
 public:
-    ULocalLlamaProvider();
+    ULocalLlamaProvider(const FObjectInitializer& ObjectInitializer);
     virtual ~ULocalLlamaProvider();
 
     // ILlamaProvider implementation
@@ -33,6 +38,17 @@ public:
     virtual void SetToolCallCallback(std::function<void(FString)> Callback) override;
     virtual void SetIsGeneratingCallback(std::function<void(bool)> Callback) override;
 
+    // Context management
+    ULLMContextManager* GetContextManager() const;
+    void SetContextManager(ULLMContextManager* InContextManager);
+    FContextVisPayload GetContextVisualization() const;
+    void BroadcastContextUpdate(const FContextVisPayload& Payload);
+
 private:
-    Internal::LlamaInternal* LlamaInternal;  // Updated from Llama to LlamaInternal
+    TUniquePtr<Internal::LlamaInternal> LlamaInternal;
+    UPROPERTY()
+    ULLMContextManager* ContextManager;
+
+    DECLARE_MULTICAST_DELEGATE_OneParam(FOnContextChanged, const FContextVisPayload&);
+    FOnContextChanged OnContextChanged;
 }; 

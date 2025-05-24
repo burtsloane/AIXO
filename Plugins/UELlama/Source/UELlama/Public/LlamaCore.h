@@ -1,11 +1,18 @@
 #pragma once
 
+// Engine includes first
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
+#include "Templates/SharedPointer.h"
+#include "Templates/UniquePtr.h"
+
+// Plugin includes
 #include "ILlamaCore.h"
 #include "LlamaTypes.h"
+
 #include "LlamaCore.generated.h"
 
+// Forward declarations
 namespace Internal {
     class LlamaInternal;
 }
@@ -16,7 +23,7 @@ class UELLAMA_API ULlamaCore : public UObject, public ILlamaCoreInterface
     GENERATED_BODY()
 
 public:
-    ULlamaCore();
+    ULlamaCore(const FObjectInitializer& ObjectInitializer);
     virtual ~ULlamaCore();
 
     // ILlamaCoreInterface implementation
@@ -35,5 +42,5 @@ public:
     virtual void SetIsGeneratingCallback(std::function<void(bool)> Callback) override;
 
 private:
-    std::unique_ptr<Internal::LlamaInternal> LlamaInternal;
+    TUniquePtr<Internal::LlamaInternal> LlamaInternal;  // Use Unreal's TUniquePtr
 }; 

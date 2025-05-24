@@ -227,4 +227,67 @@ namespace Internal
         UE_LOG(LogTemp, Log, TEXT("LlamaThread: Thread run loop ending"));
     }
 
+    void LlamaInternal::ShutdownLlama_LlamaThread()
+    {
+        if (ctx)
+        {
+            llama_free(ctx);
+            ctx = nullptr;
+        }
+        if (model)
+        {
+            llama_model_free(model);
+            model = nullptr;
+        }
+    }
+
+    void LlamaInternal::UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockType, const FString& NewContent)
+    {
+        if (!ctx)
+        {
+            return;
+        }
+
+        _TokenizeAndStoreFixedBlockInternal(BlockType, NewContent, true);
+    }
+
+    void LlamaInternal::RequestFullContextDump_LlamaThread()
+    {
+        if (!ctx)
+        {
+            return;
+        }
+
+        FContextVisPayload Payload;
+        // TODO: Implement context dump collection
+        qLlamaToMain.enqueue([this, Payload]() { 
+            if (contextChangedCb) contextChangedCb(Payload); 
+        });
+    }
+
+    void LlamaInternal::ProcessInputAndGenerate_LlamaThread(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint)
+    {
+        if (!ctx)
+        {
+            return;
+        }
+
+        // TODO: Implement input processing and generation
+        // This is a placeholder that should be replaced with actual llama.cpp implementation
+        FString Response = TEXT("Response placeholder");
+        qLlamaToMain.enqueue([this, Response]() { 
+            if (tokenCb) tokenCb(Response); 
+        });
+    }
+
+    void LlamaInternal::_TokenizeAndStoreFixedBlockInternal(ELlamaContextBlockType BlockType, const FString& Content, bool bClearExisting)
+    {
+        if (!ctx)
+        {
+            return;
+        }
+
+        // TODO: Implement tokenization and storage
+        // This is a placeholder that should be replaced with actual llama.cpp implementation
+    }
 } // namespace Internal 

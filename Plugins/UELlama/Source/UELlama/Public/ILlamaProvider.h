@@ -12,7 +12,7 @@ class ULlamaProvider : public UInterface
     GENERATED_BODY()
 };
 
-class UELlama_API ILlamaProvider
+class UELLAMA_API ILlamaProvider
 {
     GENERATED_BODY()
 
