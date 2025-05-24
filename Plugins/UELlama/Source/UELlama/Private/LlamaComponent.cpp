@@ -101,9 +101,7 @@ void ULlamaComponent::ActivateLlamaComponent(FString SystemsContextBlock, FStrin
         FString ModelPathCopy = PathToModel;
         FString SystemPromptCopy = LoadedSystemPrompt;
 
-        LlamaImpl->qMainToLlama.enqueue([this, ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock]() {
-            LlamaImpl->InitializeLlama_LlamaThread(ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock /*, other params */);
-        });
+        LlamaImpl->InitializeLlama(ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock /*, other params */);
     } else {
         UE_LOG(LogTemp, Error, TEXT("ULlamaComponent: PathToModel or SystemPromptFileName is empty. Llama not initialized."));
     }
@@ -126,9 +124,7 @@ void ULlamaComponent::UpdateContextBlock(ELlamaContextBlockType BlockType, const
 {
     if (LlamaImpl) {
         FString TextCopy = NewTextContent; // Ensure lifetime for lambda
-        LlamaImpl->qMainToLlama.enqueue([this, BlockType, TextCopy]() {
-            LlamaImpl->UpdateContextBlock_LlamaThread(BlockType, TextCopy);
-        });
+		LlamaImpl->UpdateContextBlock(BlockType, TextCopy);
     }
 }
 
@@ -149,18 +145,14 @@ void ULlamaComponent::ProcessInput(const FString& InputText, const FString& High
         FString InputCopy = InputText;
         FString HFSCopy = HighFrequencyContextText;
         FString HintCopy = InputTypeHint;
-        LlamaImpl->qMainToLlama.enqueue([this, InputCopy, HFSCopy, HintCopy]() {
-            LlamaImpl->ProcessInputAndGenerate_LlamaThread(InputCopy, HFSCopy, HintCopy);
-        });
+        LlamaImpl->ProcessInputAndGenerate(InputCopy, HFSCopy, HintCopy);
     }
 }
 
 void ULlamaComponent::TriggerFullContextDump()
 {
     if (LlamaImpl) {
-        LlamaImpl->qMainToLlama.enqueue([this]() {
-            LlamaImpl->RequestFullContextDump_LlamaThread();
-        });
+        LlamaImpl->RequestFullContextDump();
     }
 }
 
@@ -172,7 +164,7 @@ void ULlamaComponent::TickComponent(float DeltaTime,
 
 	if (LlamaImpl) {
 		// UE_LOG(LogTemp, Verbose, TEXT("ULlamaComponent::TickComponent - LlamaImpl is VALID. Processing qLlamaToMain."));
-		while(LlamaImpl->qLlamaToMain.processQ());
+		LlamaImpl->ProcessLlamaToMainQueue();
 	} else {
 		UE_LOG(LogTemp, Error, TEXT("ULlamaComponent::TickComponent - LlamaImpl IS NULL!"));
 	}

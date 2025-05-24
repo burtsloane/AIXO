@@ -76,13 +76,14 @@ public:
 	LLInternal();
 	~LLInternal();
 
-	// MODIFIED/NEW API for Llama thread
-	void InitializeLlama_LlamaThread(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq /*, other params */);
-	void ShutdownLlama_LlamaThread();
-	void UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockType, const FString& NewTextContent);
-	void ProcessInputAndGenerate_LlamaThread(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
-	void RequestFullContextDump_LlamaThread(); // Renamed for clarity
+	// thread-safe API for Llama thread
+	void InitializeLlama(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq /*, other params */);
+	void UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent);
+	void ProcessInputAndGenerate(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
+	void RequestFullContextDump(); // Renamed for clarity
+	void ProcessLlamaToMainQueue();
 	void SignalStopRunning() { bIsRunning = false; }
+	void ShutdownLlama_LlamaThread();
 
 	// these generally send a broadcast to Unreal blueprints; only two do anything else
 	std::function<void(FString)> tokenCb;
@@ -101,9 +102,13 @@ private:
 	void RebuildFlatConversationHistoryTokensFromStructured();
 	void BroadcastContextVisualUpdate_LlamaThread(int32 nTokens=0, float msDecode=0.0f, float msGenerate=0.0f);
 	void LlamaLogContext(FString Label);
+	void InitializeLlama_LlamaThread(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq /*, other params */);
+	void UpdateContextBlock_LlamaThread(ELlamaContextBlockType BlockType, const FString& NewTextContent);
+	void ProcessInputAndGenerate_LlamaThread(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint);
+	void RequestFullContextDump_LlamaThread(); // Renamed for clarity
 
 	// --- Threading & Queues ---
-public:
+private:
 	Q qMainToLlama;
 	Q qLlamaToMain;
 

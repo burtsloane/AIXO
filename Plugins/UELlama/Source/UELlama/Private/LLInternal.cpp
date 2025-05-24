@@ -1471,3 +1471,46 @@ kv_cache_token_cursor += assistant_prefix_tokens.size();
         ShutdownLlama_LlamaThread(); // Clean up llama resources
     }
 
+
+// external thread-safety
+
+	void LLInternal::InitializeLlama(const FString& ModelPath, const FString& InitialSystemPrompt, const FString& Systems, const FString& LowFreq)
+	{
+		FString ModelPathCopy = ModelPath;
+		FString SystemPromptCopy = InitialSystemPrompt;
+		FString SystemsContextBlock = Systems;
+		FString LowFreqContextBlock = LowFreq;
+        qMainToLlama.enqueue([this, ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock]() {
+            InitializeLlama_LlamaThread(ModelPathCopy, SystemPromptCopy, SystemsContextBlock, LowFreqContextBlock);
+        });
+	}
+
+	void LLInternal::UpdateContextBlock(ELlamaContextBlockType BlockType, const FString& NewTextContent)
+	{
+		FString TextCopy = NewTextContent;
+        qMainToLlama.enqueue([this, BlockType, TextCopy]() {
+            UpdateContextBlock_LlamaThread(BlockType, TextCopy);
+        });
+	}
+
+	void LLInternal::ProcessInputAndGenerate(const FString& InputText, const FString& HighFrequencyContextText, const FString& InputTypeHint)
+	{
+		FString InputCopy = InputText;
+		FString HFSCopy = HighFrequencyContextText;
+		FString HintCopy = InputTypeHint;
+        qMainToLlama.enqueue([this, InputCopy, HFSCopy, HintCopy]() {
+            ProcessInputAndGenerate_LlamaThread(InputCopy, HFSCopy, HintCopy);
+        });
+	}
+
+	void LLInternal::RequestFullContextDump()
+	{
+        qMainToLlama.enqueue([this]() {
+            RequestFullContextDump_LlamaThread();
+        });
+	}
+
+	void LLInternal::ProcessLlamaToMainQueue()
+	{
+		while(qLlamaToMain.processQ());
+	}

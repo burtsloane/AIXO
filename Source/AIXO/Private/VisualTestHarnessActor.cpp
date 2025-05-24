@@ -103,7 +103,8 @@ AVisualTestHarnessActor::AVisualTestHarnessActor()
         UE_LOG(LogTemp, Error, TEXT("Failed to find /Engine/EngineResources/WhiteSquareTexture!"));
     }
     
-    LlamaAIXOComponent = CreateDefaultSubobject<ULlamaComponent>(TEXT("LlamaAIXOComponentInstance"));
+//    LlamaAIXOComponent = CreateDefaultSubobject<ULlamaComponent>(TEXT("LlamaAIXOComponentInstance"));
+    LlamaAIXOComponent = GetComponent<ULlamaComponent>();
     LlamaAIXOComponent->PathToModel = PathToModel;
 }
 
